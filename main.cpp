@@ -87,10 +87,11 @@ int main(int argc, char **argv)
 
     // Output
     std::cout << "Running with:\n"
-        << " - domain size: " << size << "\n"
-        << " - timestep size: " << dt << "\n"
+        << " - domain size: " << size << "x" << size << "x" << size << "\n"
         << " - spatial discretization step: " << dx << "\n"
+        << " - timestep size: " << dt << "\n"
         << " - timesteps: " << timesteps << "\n"
+        << " - final time: " << timesteps*dt << "\n"
         << " - CFL: " << cfl << "\n\n";
 
     // Create q
@@ -116,14 +117,14 @@ int main(int argc, char **argv)
     double error;
 
     for (int t = 1; t <= timesteps; ++t) {
-        //std::cout << "Doing timestep " << t << "...  ";
         heat.DoTimeStep();
         error = computeError(q, dt * t, dx, dy ,dz);
         if (t % 20 == 0) {
             mat.addField(q, t/20);
         }
     }
-    std::cout << "Error at end: " << computeError(q, 0.05, dx, dy, dz) << "\n";
+    
+    std::cout << "Error at end: " << computeError(q, timesteps*dt, dx, dy, dz) << "\n";
 
     mat.endCell();
 
