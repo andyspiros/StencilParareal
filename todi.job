@@ -1,0 +1,11 @@
+#! /bin/bash -l
+#SBATCH --nodes=1
+#SBATCH --time=4:00:00
+for Nx in 8 16 32 64 128
+do
+    for timesteps in 10 50 100 500 1000
+    do
+        time build/heat $Nx $timesteps
+        echo -e "\n------------------------------------------------------------\n\n\n"
+    done
+done
