@@ -8,9 +8,15 @@ function PlotQ(varargin)
     end
     load(fname, 'q');
     
-    % Choose level
     if (nargin >= 2)
-        level = varargin{2};
+        wait = varargin{2};
+    else
+        wait = 0.1;
+    end
+    
+    % Choose level
+    if (nargin >= 3)
+        level = varargin{3};
     else
         level = size(q{1}, 3) / 2;
     end
@@ -27,7 +33,7 @@ function PlotQ(varargin)
         imagesc(qq(:,:,level));
         title(sprintf('Frame %d', t));
         caxis([0 1]);
-        pause(0.1);
+        pause(wait);
     end
 
 end

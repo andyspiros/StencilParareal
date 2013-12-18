@@ -4,13 +4,15 @@
 class Heat
 {
 public:
-    Heat(IJKRealField& q, Real coeff, Real di, Real dj, Real dk, Real dt);
+    Heat(IJKRealField& q, Real coeff, Real dx, Real dt);
 
     void DoTimeStep();
 
+    void DoTest();
+
 private:
     // Scalars
-    Real coeff_, di2_, dj2_, dk2_;
+    Real coeff_, dx2_;
     Real dt_, dthalf_;
 
     // Data fields

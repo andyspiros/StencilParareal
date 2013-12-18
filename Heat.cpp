@@ -1,9 +1,13 @@
 #include <iostream>
+#include <cmath>
+#include "MatFile.h"
 #include "Heat.h"
+
+const double pi = 3.14159265358979;
 
 enum
 {
-    q, qstart, qend, qtens, coeff, di2, dj2, dk2, dt,
+    q, qstart, qend, qtens, coeff, dx2, dt,
     k1, k2, k3, k4
 };
 
@@ -20,14 +24,37 @@ namespace HeatStages
         STAGE_PARAMETER(FullDomain, qend)
         STAGE_PARAMETER(FullDomain, qtens)
         STAGE_PARAMETER(FullDomain, coeff)
-        STAGE_PARAMETER(FullDomain, di2)
-        STAGE_PARAMETER(FullDomain, dj2)
-        STAGE_PARAMETER(FullDomain, dk2)
+        STAGE_PARAMETER(FullDomain, dx2)
         STAGE_PARAMETER(FullDomain, dt)
 
         __ACC__
         static void Do(Context ctx, FullDomain)
         {
+#ifdef NINETEEN_POINT_STENCIL
+            T tens = -24. * ctx[q::Center()]
+                + 2. * (
+                        ctx[q::At(Offset<-1,  0,  0>())]
+                     +  ctx[q::At(Offset<+1,  0,  0>())]
+                     +  ctx[q::At(Offset< 0, -1,  0>())]
+                     +  ctx[q::At(Offset< 0, +1,  0>())]
+                     +  ctx[q::At(Offset< 0,  0, -1>())]
+                     +  ctx[q::At(Offset< 0,  0, +1>())]
+               )
+                     + ctx[q::At(Offset< 0, -1, -1>())]
+                     + ctx[q::At(Offset< 0, -1, +1>())]
+                     + ctx[q::At(Offset< 0, +1, -1>())]
+                     + ctx[q::At(Offset< 0, +1, +1>())]
+                     + ctx[q::At(Offset<-1,  0, -1>())]
+                     + ctx[q::At(Offset<-1,  0, +1>())]
+                     + ctx[q::At(Offset<+1,  0, -1>())]
+                     + ctx[q::At(Offset<+1,  0, +1>())]
+                     + ctx[q::At(Offset<-1, -1,  0>())]
+                     + ctx[q::At(Offset<-1, +1,  0>())]
+                     + ctx[q::At(Offset<+1, -1,  0>())]
+                     + ctx[q::At(Offset<+1, +1,  0>())];
+            tens /= 6. * ctx[dx2::Center()];
+#else
+# ifdef FIVE_POINT_STENCIL
             T d2q_di2 =
                 - 1. * ctx[q::At(Offset<-2, 0, 0>())]
                 +16. * ctx[q::At(Offset<-1, 0, 0>())]
@@ -46,11 +73,25 @@ namespace HeatStages
                 -30. * ctx[q::At(Offset<0, 0,  0>())]
                 +16. * ctx[q::At(Offset<0, 0,  1>())]
                 - 1. * ctx[q::At(Offset<0, 0,  2>())];
-            T tens = ctx[coeff::Center()] * (
-                   d2q_di2 / ctx[di2::Center()]
-                 + d2q_dj2 / ctx[dj2::Center()]
-                 + d2q_dk2 / ctx[dk2::Center()]
-            ) / 12.;
+            T tens = ctx[coeff::Center()] / (ctx[dx2::Center()] * 12.)
+                   * (d2q_di2 + d2q_dj2 + d2q_dk2);
+# else
+            T d2q_di2 =
+                +1. * ctx[q::At(Offset<-1, 0, 0>())]
+                -2. * ctx[q::At(Offset< 0, 0, 0>())]
+                +1. * ctx[q::At(Offset< 1, 0, 0>())];
+            T d2q_dj2 =
+                +1. * ctx[q::At(Offset<0, -1, 0>())]
+                -2. * ctx[q::At(Offset<0,  0, 0>())]
+                +1. * ctx[q::At(Offset<0,  1, 0>())];
+            T d2q_dk2 =
+                +1. * ctx[q::At(Offset<0, 0, -1>())]
+                -2. * ctx[q::At(Offset<0, 0,  0>())]
+                +1. * ctx[q::At(Offset<0, 0,  1>())];
+            T tens = ctx[coeff::Center()] / (ctx[dx2::Center()])
+                   * (d2q_di2 + d2q_dj2 + d2q_dk2);
+# endif
+#endif
             ctx[qtens::Center()] = tens;
             ctx[qend::Center()] = ctx[qstart::Center()] + ctx[dt::Center()] * tens;
         }
@@ -64,13 +105,36 @@ namespace HeatStages
         STAGE_PARAMETER(FullDomain, q)
         STAGE_PARAMETER(FullDomain, qtens)
         STAGE_PARAMETER(FullDomain, coeff)
-        STAGE_PARAMETER(FullDomain, di2)
-        STAGE_PARAMETER(FullDomain, dj2)
-        STAGE_PARAMETER(FullDomain, dk2)
+        STAGE_PARAMETER(FullDomain, dx2)
 
         __ACC__
         static void Do(Context ctx, FullDomain)
         {
+#ifdef NINETEEN_POINT_STENCIL
+            T tens = -24. * ctx[q::Center()]
+                + 2. * (
+                        ctx[q::At(Offset<-1,  0,  0>())]
+                     +  ctx[q::At(Offset<+1,  0,  0>())]
+                     +  ctx[q::At(Offset< 0, -1,  0>())]
+                     +  ctx[q::At(Offset< 0, +1,  0>())]
+                     +  ctx[q::At(Offset< 0,  0, -1>())]
+                     +  ctx[q::At(Offset< 0,  0, +1>())]
+               )
+                     + ctx[q::At(Offset< 0, -1, -1>())]
+                     + ctx[q::At(Offset< 0, -1, +1>())]
+                     + ctx[q::At(Offset< 0, +1, -1>())]
+                     + ctx[q::At(Offset< 0, +1, +1>())]
+                     + ctx[q::At(Offset<-1,  0, -1>())]
+                     + ctx[q::At(Offset<-1,  0, +1>())]
+                     + ctx[q::At(Offset<+1,  0, -1>())]
+                     + ctx[q::At(Offset<+1,  0, +1>())]
+                     + ctx[q::At(Offset<-1, -1,  0>())]
+                     + ctx[q::At(Offset<-1, +1,  0>())]
+                     + ctx[q::At(Offset<+1, -1,  0>())]
+                     + ctx[q::At(Offset<+1, +1,  0>())];
+            tens /= 6. * ctx[dx2::Center()];
+#else
+# ifdef FIVE_POINT_STENCIL
             T d2q_di2 =
                 - 1. * ctx[q::At(Offset<-2, 0, 0>())]
                 +16. * ctx[q::At(Offset<-1, 0, 0>())]
@@ -89,11 +153,25 @@ namespace HeatStages
                 -30. * ctx[q::At(Offset<0, 0,  0>())]
                 +16. * ctx[q::At(Offset<0, 0,  1>())]
                 - 1. * ctx[q::At(Offset<0, 0,  2>())];
-            T tens = ctx[coeff::Center()] * (
-                   d2q_di2 / ctx[di2::Center()]
-                 + d2q_dj2 / ctx[dj2::Center()]
-                 + d2q_dk2 / ctx[dk2::Center()]
-            ) / 12.;
+            T tens = ctx[coeff::Center()] / (ctx[dx2::Center()] * 12.)
+                   * (d2q_di2 + d2q_dj2 + d2q_dk2);
+# else
+            T d2q_di2 =
+                +1. * ctx[q::At(Offset<-1, 0, 0>())]
+                -2. * ctx[q::At(Offset< 0, 0, 0>())]
+                +1. * ctx[q::At(Offset< 1, 0, 0>())];
+            T d2q_dj2 =
+                +1. * ctx[q::At(Offset<0, -1, 0>())]
+                -2. * ctx[q::At(Offset<0,  0, 0>())]
+                +1. * ctx[q::At(Offset<0,  1, 0>())];
+            T d2q_dk2 =
+                +1. * ctx[q::At(Offset<0, 0, -1>())]
+                -2. * ctx[q::At(Offset<0, 0,  0>())]
+                +1. * ctx[q::At(Offset<0, 0,  1>())];
+            T tens = ctx[coeff::Center()] / (ctx[dx2::Center()])
+                   * (d2q_di2 + d2q_dj2 + d2q_dk2);
+# endif
+#endif
             ctx[qtens::Center()] = tens;
         }
     };
@@ -124,8 +202,8 @@ namespace HeatStages
 
 }
 
-Heat::Heat(IJKRealField& data, Real heatcoeff, Real stepi, Real stepj, Real stepk, Real timestepsize)
-    : q_(data), coeff_(heatcoeff), di2_(stepi*stepi),  dj2_(stepj*stepj), dk2_(stepk*stepk),
+Heat::Heat(IJKRealField& data, Real heatcoeff, Real stepsize, Real timestepsize)
+    : q_(data), coeff_(heatcoeff), dx2_(stepsize*stepsize),
       dt_(timestepsize), dthalf_(0.5*dt_)
 {
     IJKSize calculationDomain = q_.calculationDomain();
@@ -153,9 +231,7 @@ Heat::Heat(IJKRealField& data, Real heatcoeff, Real stepi, Real stepj, Real step
             Param<qtens, cInOut>(k1_),
             // Scalars
             Param<coeff, cScalar>(coeff_),
-            Param<di2, cScalar>(di2_),
-            Param<dj2, cScalar>(dj2_),
-            Param<dk2, cScalar>(dk2_),
+            Param<dx2, cScalar>(dx2_),
             Param<dt, cScalar>(dthalf_)
         ),
         define_loops(
@@ -181,9 +257,7 @@ Heat::Heat(IJKRealField& data, Real heatcoeff, Real stepi, Real stepj, Real step
             Param<qtens, cInOut>(k2_),
             // Scalars
             Param<coeff, cScalar>(coeff_),
-            Param<di2, cScalar>(di2_),
-            Param<dj2, cScalar>(dj2_),
-            Param<dk2, cScalar>(dk2_),
+            Param<dx2, cScalar>(dx2_),
             Param<dt, cScalar>(dthalf_)
         ),
         define_loops(
@@ -209,9 +283,7 @@ Heat::Heat(IJKRealField& data, Real heatcoeff, Real stepi, Real stepj, Real step
             Param<qtens, cInOut>(k3_),
             // Scalars
             Param<coeff, cScalar>(coeff_),
-            Param<di2, cScalar>(di2_),
-            Param<dj2, cScalar>(dj2_),
-            Param<dk2, cScalar>(dk2_),
+            Param<dx2, cScalar>(dx2_),
             Param<dt, cScalar>(dt_)
         ),
         define_loops(
@@ -232,12 +304,10 @@ Heat::Heat(IJKRealField& data, Real heatcoeff, Real stepi, Real stepj, Real step
             // Input fields
             Param<q, cIn>(q_),
             // Output fields
-            Param<qtens, cInOut>(k3_),
+            Param<qtens, cInOut>(k4_),
             // Scalars
             Param<coeff, cScalar>(coeff_),
-            Param<di2, cScalar>(di2_),
-            Param<dj2, cScalar>(dj2_),
-            Param<dk2, cScalar>(dk2_)
+            Param<dx2, cScalar>(dx2_)
         ),
         define_loops(
             define_sweep<cKIncrement>(
@@ -285,4 +355,64 @@ void Heat::DoTimeStep()
     stencil4_.Apply();
 
     stencilRK_.Apply();
+}
+
+void Heat::DoTest()
+{
+    Stencil teststencil;
+    IJKSize domain = q_.calculationDomain();
+    KBoundary kboundary;
+    kboundary.Init(-3,3);
+    IJKRealField test;
+    test.Init("test", domain, kboundary);
+
+    double one = 1.;
+
+    StencilCompiler::Build(
+        teststencil,
+        "Test",
+        domain,
+        StencilConfiguration<Real, BlockSize<8,8> >(),
+        pack_parameters(
+            Param<q, cIn>(q_),
+            Param<qtens, cInOut>(test),
+            Param<coeff, cScalar>(one),
+            Param<dx2, cScalar>(dx2_)
+        ),
+        define_loops(
+            define_sweep<cKIncrement>(
+                define_stages(
+                    StencilStage<HeatStages::DiffStage, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >()
+                )
+            )
+        )
+    );
+
+    teststencil.Apply();
+
+    MatFile errfile("error.mat");
+    IJKRealField errfield;
+    errfield.Init("error", domain, kboundary);
+
+    // Test
+    for (int i = 0; i < domain.iSize(); ++i)
+        for (int j = 0; j < domain.jSize(); ++j)
+            for (int k = 0; k < domain.kSize(); ++k)
+            {
+                double exact = -3*pi*pi*q_(i, j,k);
+
+                double actual = test(i, j, k);
+
+                double error = std::abs(exact - actual);
+
+                errfield(i, j, k) = error;
+                if (error > 1e-10)
+                {
+                    std::cerr << "Error at ("
+                        << i+1 << "," << j+1 << "," << k+1 << ") : "
+                        << actual << " instead of " << exact << "\n";
+                }
+            }
+
+    errfile.addField(errfield, 0);
 }
