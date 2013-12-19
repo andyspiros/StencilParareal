@@ -80,7 +80,10 @@ void MatFile::endCell()
 void MatFile::addField(const IJKRealField& field, int inc)
 {
     std::ostringstream fieldNameStream;
-    fieldNameStream << field.name() << "_" << inc;
+    if (inc >= 0)
+        fieldNameStream << field.name() << "_" << inc;
+    else
+        fieldNameStream << field.name();
     std::string fieldName = fieldNameStream.str();
 
     IJKSize size = field.calculationDomain();

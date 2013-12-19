@@ -5,174 +5,124 @@
 
 const double pi = 3.14159265358979;
 
+Real printNorm(const IJKRealField& field, const std::string& name)
+{
+    const IJKSize size =  field.calculationDomain();
+    Real norm = 0.;
+    for (int i = 0; i < size.iSize(); ++i)
+        for (int j = 0; j < size.jSize(); ++j)
+            for (int k = 0; k < size.kSize(); ++k)
+            {
+                norm = std::max(std::abs(field(i,j,k)), norm);
+            }
+    std::cout << "Norm of " << name << " is " << norm << "\n";
+}
+
 enum
 {
-    q, qstart, qend, qtens, coeff, dx2, dt,
-    k1, k2, k3, k4
+    coeff, dx2, dt,
+    k, k1, k2, k3, k4,
+    qmain, qlapl, qtemp
 };
 
 
 namespace HeatStages
 {
+
     template<typename TEnv>
-    struct DiffStageAndUpdate
+    struct LaplaceStage
     {
         STENCIL_STAGE(TEnv)
 
-        STAGE_PARAMETER(FullDomain, q)
-        STAGE_PARAMETER(FullDomain, qstart)
-        STAGE_PARAMETER(FullDomain, qend)
-        STAGE_PARAMETER(FullDomain, qtens)
+        STAGE_PARAMETER(FullDomain, qlapl)
+        STAGE_PARAMETER(FullDomain, k)
         STAGE_PARAMETER(FullDomain, coeff)
         STAGE_PARAMETER(FullDomain, dx2)
-        STAGE_PARAMETER(FullDomain, dt)
 
         __ACC__
         static void Do(Context ctx, FullDomain)
         {
 #ifdef NINETEEN_POINT_STENCIL
-            T tens = -24. * ctx[q::Center()]
+            T tens = -24. * ctx[qlapl::Center()]
                 + 2. * (
-                        ctx[q::At(Offset<-1,  0,  0>())]
-                     +  ctx[q::At(Offset<+1,  0,  0>())]
-                     +  ctx[q::At(Offset< 0, -1,  0>())]
-                     +  ctx[q::At(Offset< 0, +1,  0>())]
-                     +  ctx[q::At(Offset< 0,  0, -1>())]
-                     +  ctx[q::At(Offset< 0,  0, +1>())]
+                        ctx[qlapl::At(Offset<-1,  0,  0>())]
+                     +  ctx[qlapl::At(Offset<+1,  0,  0>())]
+                     +  ctx[qlapl::At(Offset< 0, -1,  0>())]
+                     +  ctx[qlapl::At(Offset< 0, +1,  0>())]
+                     +  ctx[qlapl::At(Offset< 0,  0, -1>())]
+                     +  ctx[qlapl::At(Offset< 0,  0, +1>())]
                )
-                     + ctx[q::At(Offset< 0, -1, -1>())]
-                     + ctx[q::At(Offset< 0, -1, +1>())]
-                     + ctx[q::At(Offset< 0, +1, -1>())]
-                     + ctx[q::At(Offset< 0, +1, +1>())]
-                     + ctx[q::At(Offset<-1,  0, -1>())]
-                     + ctx[q::At(Offset<-1,  0, +1>())]
-                     + ctx[q::At(Offset<+1,  0, -1>())]
-                     + ctx[q::At(Offset<+1,  0, +1>())]
-                     + ctx[q::At(Offset<-1, -1,  0>())]
-                     + ctx[q::At(Offset<-1, +1,  0>())]
-                     + ctx[q::At(Offset<+1, -1,  0>())]
-                     + ctx[q::At(Offset<+1, +1,  0>())];
+                     + ctx[qlapl::At(Offset< 0, -1, -1>())]
+                     + ctx[qlapl::At(Offset< 0, -1, +1>())]
+                     + ctx[qlapl::At(Offset< 0, +1, -1>())]
+                     + ctx[qlapl::At(Offset< 0, +1, +1>())]
+                     + ctx[qlapl::At(Offset<-1,  0, -1>())]
+                     + ctx[qlapl::At(Offset<-1,  0, +1>())]
+                     + ctx[qlapl::At(Offset<+1,  0, -1>())]
+                     + ctx[qlapl::At(Offset<+1,  0, +1>())]
+                     + ctx[qlapl::At(Offset<-1, -1,  0>())]
+                     + ctx[qlapl::At(Offset<-1, +1,  0>())]
+                     + ctx[qlapl::At(Offset<+1, -1,  0>())]
+                     + ctx[qlapl::At(Offset<+1, +1,  0>())];
             tens /= 6. * ctx[dx2::Center()];
 #else
 # ifdef FIVE_POINT_STENCIL
             T d2q_di2 =
-                - 1. * ctx[q::At(Offset<-2, 0, 0>())]
-                +16. * ctx[q::At(Offset<-1, 0, 0>())]
-                -30. * ctx[q::At(Offset< 0, 0, 0>())]
-                +16. * ctx[q::At(Offset< 1, 0, 0>())]
-                - 1. * ctx[q::At(Offset< 2, 0, 0>())];
+                - 1. * ctx[qlapl::At(Offset<-2, 0, 0>())]
+                +16. * ctx[qlapl::At(Offset<-1, 0, 0>())]
+                -30. * ctx[qlapl::At(Offset< 0, 0, 0>())]
+                +16. * ctx[qlapl::At(Offset< 1, 0, 0>())]
+                - 1. * ctx[qlapl::At(Offset< 2, 0, 0>())];
             T d2q_dj2 =
-                - 1. * ctx[q::At(Offset<0, -2, 0>())]
-                +16. * ctx[q::At(Offset<0, -1, 0>())]
-                -30. * ctx[q::At(Offset<0,  0, 0>())]
-                +16. * ctx[q::At(Offset<0,  1, 0>())]
-                - 1. * ctx[q::At(Offset<0,  2, 0>())];
+                - 1. * ctx[qlapl::At(Offset<0, -2, 0>())]
+                +16. * ctx[qlapl::At(Offset<0, -1, 0>())]
+                -30. * ctx[qlapl::At(Offset<0,  0, 0>())]
+                +16. * ctx[qlapl::At(Offset<0,  1, 0>())]
+                - 1. * ctx[qlapl::At(Offset<0,  2, 0>())];
             T d2q_dk2 =
-                - 1. * ctx[q::At(Offset<0, 0, -2>())]
-                +16. * ctx[q::At(Offset<0, 0, -1>())]
-                -30. * ctx[q::At(Offset<0, 0,  0>())]
-                +16. * ctx[q::At(Offset<0, 0,  1>())]
-                - 1. * ctx[q::At(Offset<0, 0,  2>())];
-            T tens = ctx[coeff::Center()] / (ctx[dx2::Center()] * 12.)
-                   * (d2q_di2 + d2q_dj2 + d2q_dk2);
+                - 1. * ctx[qlapl::At(Offset<0, 0, -2>())]
+                +16. * ctx[qlapl::At(Offset<0, 0, -1>())]
+                -30. * ctx[qlapl::At(Offset<0, 0,  0>())]
+                +16. * ctx[qlapl::At(Offset<0, 0,  1>())]
+                - 1. * ctx[qlapl::At(Offset<0, 0,  2>())];
+            T tens = ctx[coeff::Center()] * (d2q_di2 + d2q_dj2 + d2q_dk2);
+            tens /= ctx[dx2::Center()] * 12.;
 # else
             T d2q_di2 =
-                +1. * ctx[q::At(Offset<-1, 0, 0>())]
-                -2. * ctx[q::At(Offset< 0, 0, 0>())]
-                +1. * ctx[q::At(Offset< 1, 0, 0>())];
+                +1. * ctx[qlapl::At(Offset<-1, 0, 0>())]
+                -2. * ctx[qlapl::At(Offset< 0, 0, 0>())]
+                +1. * ctx[qlapl::At(Offset< 1, 0, 0>())];
             T d2q_dj2 =
-                +1. * ctx[q::At(Offset<0, -1, 0>())]
-                -2. * ctx[q::At(Offset<0,  0, 0>())]
-                +1. * ctx[q::At(Offset<0,  1, 0>())];
+                +1. * ctx[qlapl::At(Offset<0, -1, 0>())]
+                -2. * ctx[qlapl::At(Offset<0,  0, 0>())]
+                +1. * ctx[qlapl::At(Offset<0,  1, 0>())];
             T d2q_dk2 =
-                +1. * ctx[q::At(Offset<0, 0, -1>())]
-                -2. * ctx[q::At(Offset<0, 0,  0>())]
-                +1. * ctx[q::At(Offset<0, 0,  1>())];
-            T tens = ctx[coeff::Center()] / (ctx[dx2::Center()])
-                   * (d2q_di2 + d2q_dj2 + d2q_dk2);
+                +1. * ctx[qlapl::At(Offset<0, 0, -1>())]
+                -2. * ctx[qlapl::At(Offset<0, 0,  0>())]
+                +1. * ctx[qlapl::At(Offset<0, 0,  1>())];
+            T tens = ctx[coeff::Center()] * (d2q_di2 + d2q_dj2 + d2q_dk2);
+            tens /= ctx[dx2::Center()];
 # endif
 #endif
-            ctx[qtens::Center()] = tens;
-            ctx[qend::Center()] = ctx[qstart::Center()] + ctx[dt::Center()] * tens;
+            ctx[k::Center()] = tens;
         }
     };
 
     template<typename TEnv>
-    struct DiffStage
+    struct EulerStage
     {
         STENCIL_STAGE(TEnv)
 
-        STAGE_PARAMETER(FullDomain, q)
-        STAGE_PARAMETER(FullDomain, qtens)
-        STAGE_PARAMETER(FullDomain, coeff)
-        STAGE_PARAMETER(FullDomain, dx2)
+        STAGE_PARAMETER(FullDomain, qmain)
+        STAGE_PARAMETER(FullDomain, qtemp)
+        STAGE_PARAMETER(FullDomain, k)
+        STAGE_PARAMETER(FullDomain, dt)
 
-        __ACC__
         static void Do(Context ctx, FullDomain)
         {
-#ifdef NINETEEN_POINT_STENCIL
-            T tens = -24. * ctx[q::Center()]
-                + 2. * (
-                        ctx[q::At(Offset<-1,  0,  0>())]
-                     +  ctx[q::At(Offset<+1,  0,  0>())]
-                     +  ctx[q::At(Offset< 0, -1,  0>())]
-                     +  ctx[q::At(Offset< 0, +1,  0>())]
-                     +  ctx[q::At(Offset< 0,  0, -1>())]
-                     +  ctx[q::At(Offset< 0,  0, +1>())]
-               )
-                     + ctx[q::At(Offset< 0, -1, -1>())]
-                     + ctx[q::At(Offset< 0, -1, +1>())]
-                     + ctx[q::At(Offset< 0, +1, -1>())]
-                     + ctx[q::At(Offset< 0, +1, +1>())]
-                     + ctx[q::At(Offset<-1,  0, -1>())]
-                     + ctx[q::At(Offset<-1,  0, +1>())]
-                     + ctx[q::At(Offset<+1,  0, -1>())]
-                     + ctx[q::At(Offset<+1,  0, +1>())]
-                     + ctx[q::At(Offset<-1, -1,  0>())]
-                     + ctx[q::At(Offset<-1, +1,  0>())]
-                     + ctx[q::At(Offset<+1, -1,  0>())]
-                     + ctx[q::At(Offset<+1, +1,  0>())];
-            tens /= 6. * ctx[dx2::Center()];
-#else
-# ifdef FIVE_POINT_STENCIL
-            T d2q_di2 =
-                - 1. * ctx[q::At(Offset<-2, 0, 0>())]
-                +16. * ctx[q::At(Offset<-1, 0, 0>())]
-                -30. * ctx[q::At(Offset< 0, 0, 0>())]
-                +16. * ctx[q::At(Offset< 1, 0, 0>())]
-                - 1. * ctx[q::At(Offset< 2, 0, 0>())];
-            T d2q_dj2 =
-                - 1. * ctx[q::At(Offset<0, -2, 0>())]
-                +16. * ctx[q::At(Offset<0, -1, 0>())]
-                -30. * ctx[q::At(Offset<0,  0, 0>())]
-                +16. * ctx[q::At(Offset<0,  1, 0>())]
-                - 1. * ctx[q::At(Offset<0,  2, 0>())];
-            T d2q_dk2 =
-                - 1. * ctx[q::At(Offset<0, 0, -2>())]
-                +16. * ctx[q::At(Offset<0, 0, -1>())]
-                -30. * ctx[q::At(Offset<0, 0,  0>())]
-                +16. * ctx[q::At(Offset<0, 0,  1>())]
-                - 1. * ctx[q::At(Offset<0, 0,  2>())];
-            T tens = ctx[coeff::Center()] / (ctx[dx2::Center()] * 12.)
-                   * (d2q_di2 + d2q_dj2 + d2q_dk2);
-# else
-            T d2q_di2 =
-                +1. * ctx[q::At(Offset<-1, 0, 0>())]
-                -2. * ctx[q::At(Offset< 0, 0, 0>())]
-                +1. * ctx[q::At(Offset< 1, 0, 0>())];
-            T d2q_dj2 =
-                +1. * ctx[q::At(Offset<0, -1, 0>())]
-                -2. * ctx[q::At(Offset<0,  0, 0>())]
-                +1. * ctx[q::At(Offset<0,  1, 0>())];
-            T d2q_dk2 =
-                +1. * ctx[q::At(Offset<0, 0, -1>())]
-                -2. * ctx[q::At(Offset<0, 0,  0>())]
-                +1. * ctx[q::At(Offset<0, 0,  1>())];
-            T tens = ctx[coeff::Center()] / (ctx[dx2::Center()])
-                   * (d2q_di2 + d2q_dj2 + d2q_dk2);
-# endif
-#endif
-            ctx[qtens::Center()] = tens;
+            const T dt_ = ctx[dt::Center()];
+            ctx[qtemp::Center()] = ctx[qmain::Center()]
+                                 + dt_*ctx[k::Center()];
         }
     };
 
@@ -181,7 +131,7 @@ namespace HeatStages
     {
         STENCIL_STAGE(TEnv)
 
-        STAGE_PARAMETER(FullDomain, q)
+        STAGE_PARAMETER(FullDomain, qmain)
         STAGE_PARAMETER(FullDomain, k1)
         STAGE_PARAMETER(FullDomain, k2)
         STAGE_PARAMETER(FullDomain, k3)
@@ -190,7 +140,7 @@ namespace HeatStages
 
         static void Do(Context ctx, FullDomain)
         {
-            ctx[q::Center()] = ctx[q::Center()] + ctx[dt::Center()]/6. *
+            ctx[qmain::Center()] = ctx[qmain::Center()] + ctx[dt::Center()]/6. *
                 (
                          ctx[k1::Center()]
                    + 2.* ctx[k2::Center()]
@@ -202,135 +152,74 @@ namespace HeatStages
 
 }
 
-Heat::Heat(IJKRealField& data, Real heatcoeff, Real stepsize, Real timestepsize)
-    : q_(data), coeff_(heatcoeff), dx2_(stepsize*stepsize),
-      dt_(timestepsize), dthalf_(0.5*dt_)
+Heat::Heat(IJKRealField& data, Real heatcoeff, Real stepsize, Real timestepsize, MPI_Comm comm)
+    : qs_(data), ks_(data)
+    , coeff_(heatcoeff), dx2_(stepsize*stepsize)
+    , dt_(timestepsize), dthalf_(.5 * timestepsize)
+    , he_(true, true, true, comm)
 {
-    IJKSize calculationDomain = q_.calculationDomain();
-    KBoundary kboundary;
-    kboundary.Init(-3, 3);
-
-    qtempin_.Init("qtemp", calculationDomain, kboundary);
-    qtempout_.Init("qtemp", calculationDomain, kboundary);
-    k1_.Init("k1", calculationDomain, kboundary);
-    k2_.Init("k2", calculationDomain, kboundary);
-    k3_.Init("k3", calculationDomain, kboundary);
-    k4_.Init("k4", calculationDomain, kboundary);
-
+    IJKSize calculationDomain = data.calculationDomain();
     StencilCompiler::Build(
-        stencil1_,
-        "Heat",
+        laplaceStencil_,
+        "Laplace",
         calculationDomain,
         StencilConfiguration<Real, BlockSize<8, 8> >(),
         pack_parameters(
             // Input fields
-            Param<q, cIn>(q_),
-            Param<qstart, cIn>(qtempin_),
+            Param<qlapl, cIn>(qs_.qlaplace()),
             // Output fields
-            Param<qend, cInOut>(qtempout_),
-            Param<qtens, cInOut>(k1_),
+            Param<k, cInOut>(ks_.k()),
             // Scalars
             Param<coeff, cScalar>(coeff_),
             Param<dx2, cScalar>(dx2_),
-            Param<dt, cScalar>(dthalf_)
+            Param<dt, cScalar>(dtparam_)
         ),
         define_loops(
             define_sweep<cKIncrement>(
                 define_stages(
-                    StencilStage<HeatStages::DiffStageAndUpdate, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >()
+                    StencilStage<HeatStages::LaplaceStage, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >()
                 )
             )
         )
     );
+    std::cout << "Registerig qlapl as " << &qs_.qlaplace() << "\n";
 
     StencilCompiler::Build(
-        stencil2_,
-        "Heat",
+        eulerStencil_,
+        "Euler",
         calculationDomain,
         StencilConfiguration<Real, BlockSize<8, 8> >(),
         pack_parameters(
             // Input fields
-            Param<q, cIn>(q_),
-            Param<qstart, cIn>(qtempin_),
+            Param<qmain, cIn>(qs_.qmain()),
+            Param<k, cIn>(ks_.k()),
             // Output fields
-            Param<qend, cInOut>(qtempout_),
-            Param<qtens, cInOut>(k2_),
+            Param<qtemp, cInOut>(qs_.qtemp()),
             // Scalars
-            Param<coeff, cScalar>(coeff_),
-            Param<dx2, cScalar>(dx2_),
-            Param<dt, cScalar>(dthalf_)
+            Param<dt, cScalar>(dtparam_)
         ),
         define_loops(
             define_sweep<cKIncrement>(
                 define_stages(
-                    StencilStage<HeatStages::DiffStageAndUpdate, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >()
+                    StencilStage<HeatStages::EulerStage, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >()
                 )
             )
         )
     );
 
     StencilCompiler::Build(
-        stencil3_,
-        "Heat",
+        rkStencil_,
+        "RungeKutta",
         calculationDomain,
         StencilConfiguration<Real, BlockSize<8, 8> >(),
         pack_parameters(
             // Input fields
-            Param<q, cIn>(q_),
-            Param<qstart, cIn>(qtempin_),
+            Param<k1, cIn>(ks_.k1()),
+            Param<k2, cIn>(ks_.k2()),
+            Param<k3, cIn>(ks_.k3()),
+            Param<k4, cIn>(ks_.k4()),
             // Output fields
-            Param<qend, cInOut>(qtempout_),
-            Param<qtens, cInOut>(k3_),
-            // Scalars
-            Param<coeff, cScalar>(coeff_),
-            Param<dx2, cScalar>(dx2_),
-            Param<dt, cScalar>(dt_)
-        ),
-        define_loops(
-            define_sweep<cKIncrement>(
-                define_stages(
-                    StencilStage<HeatStages::DiffStageAndUpdate, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >()
-                )
-            )
-        )
-    );
-
-    StencilCompiler::Build(
-        stencil4_,
-        "Heat",
-        calculationDomain,
-        StencilConfiguration<Real, BlockSize<8, 8> >(),
-        pack_parameters(
-            // Input fields
-            Param<q, cIn>(q_),
-            // Output fields
-            Param<qtens, cInOut>(k4_),
-            // Scalars
-            Param<coeff, cScalar>(coeff_),
-            Param<dx2, cScalar>(dx2_)
-        ),
-        define_loops(
-            define_sweep<cKIncrement>(
-                define_stages(
-                    StencilStage<HeatStages::DiffStage, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >()
-                )
-            )
-        )
-    );
-
-    StencilCompiler::Build(
-        stencilRK_,
-        "HeatRK",
-        calculationDomain,
-        StencilConfiguration<Real, BlockSize<8, 8> >(),
-        pack_parameters(
-            // Input fields
-            Param<k1, cIn>(k1_),
-            Param<k2, cIn>(k2_),
-            Param<k3, cIn>(k3_),
-            Param<k4, cIn>(k4_),
-            // Output fields
-            Param<q, cInOut>(q_),
+            Param<qmain, cInOut>(qs_.qmain()),
             // Scalars
             Param<dt, cScalar>(dt_)
         ),
@@ -342,77 +231,116 @@ Heat::Heat(IJKRealField& data, Real heatcoeff, Real stepsize, Real timestepsize)
             )
         )
     );
+
+    he_.registerField(qs_.qlaplace());
 }
 
 void Heat::DoTimeStep()
 {
-    stencil1_.Apply();
-    qtempin_.SwapWith(qtempout_);
-    stencil2_.Apply();
-    qtempin_.SwapWith(qtempout_);
-    stencil3_.Apply();
-    qtempin_.SwapWith(qtempout_);
-    stencil4_.Apply();
+    /* First RK timestep */
+    ks_.set(1);
+    qs_.setLaplaceMain();
+    he_.exchange();
+    laplaceStencil_.Apply();
+    // Now: k1 = laplace(qmain)
 
-    stencilRK_.Apply();
+    /* Second RK timestep */
+    qs_.restore();
+    dtparam_ = dthalf_;
+    eulerStencil_.Apply();
+    // Now: qtemp = qmain + dthalf_*k1
+
+    ks_.set(2);
+    qs_.setLaplaceTemp();
+    he_.exchange();
+    laplaceStencil_.Apply();
+    // Now: k2 = laplace(qmain + dthalf_*k1)
+    
+    /* Third RK timestep */
+    qs_.restore();
+    eulerStencil_.Apply();
+    // Now: qtemp = qmain + dthalf_*k2
+
+    ks_.set(3);
+    qs_.setLaplaceTemp();
+    he_.exchange();
+    laplaceStencil_.Apply();
+    // Now: k3 = laplace(qmain + dthalf_*k2)
+    
+    /* Fourth RK timestep */
+    qs_.restore();
+    dtparam_ = dt_;
+    eulerStencil_.Apply();
+    // Now: qtemp = qmain + dt_*k3
+
+    ks_.set(4);
+    qs_.setLaplaceTemp();
+    he_.exchange();
+    laplaceStencil_.Apply();
+    // Now: k4 = laplace(qmain + dt_*k3)
+
+    /* Final RK stage: put things together */
+    ks_.restore();
+    qs_.restore();
+    rkStencil_.Apply();
 }
 
 void Heat::DoTest()
 {
-    Stencil teststencil;
-    IJKSize domain = q_.calculationDomain();
-    KBoundary kboundary;
-    kboundary.Init(-3,3);
-    IJKRealField test;
-    test.Init("test", domain, kboundary);
+    // Stencil teststencil;
+    // IJKSize domain = q_.calculationDomain();
+    // KBoundary kboundary;
+    // kboundary.Init(-3,3);
+    // IJKRealField test;
+    // test.Init("test", domain, kboundary);
 
-    double one = 1.;
+    // double one = 1.;
 
-    StencilCompiler::Build(
-        teststencil,
-        "Test",
-        domain,
-        StencilConfiguration<Real, BlockSize<8,8> >(),
-        pack_parameters(
-            Param<q, cIn>(q_),
-            Param<qtens, cInOut>(test),
-            Param<coeff, cScalar>(one),
-            Param<dx2, cScalar>(dx2_)
-        ),
-        define_loops(
-            define_sweep<cKIncrement>(
-                define_stages(
-                    StencilStage<HeatStages::DiffStage, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >()
-                )
-            )
-        )
-    );
+    // StencilCompiler::Build(
+    //     teststencil,
+    //     "Test",
+    //     domain,
+    //     StencilConfiguration<Real, BlockSize<8,8> >(),
+    //     pack_parameters(
+    //         Param<q, cIn>(q_),
+    //         Param<qtens, cInOut>(test),
+    //         Param<coeff, cScalar>(one),
+    //         Param<dx2, cScalar>(dx2_)
+    //     ),
+    //     define_loops(
+    //         define_sweep<cKIncrement>(
+    //             define_stages(
+    //                 StencilStage<HeatStages::DiffStage, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >()
+    //             )
+    //         )
+    //     )
+    // );
 
-    teststencil.Apply();
+    // teststencil.Apply();
 
-    MatFile errfile("error.mat");
-    IJKRealField errfield;
-    errfield.Init("error", domain, kboundary);
+    // MatFile errfile("error.mat");
+    // IJKRealField errfield;
+    // errfield.Init("error", domain, kboundary);
 
-    // Test
-    for (int i = 0; i < domain.iSize(); ++i)
-        for (int j = 0; j < domain.jSize(); ++j)
-            for (int k = 0; k < domain.kSize(); ++k)
-            {
-                double exact = -3*pi*pi*q_(i, j,k);
+    // // Test
+    // for (int i = 0; i < domain.iSize(); ++i)
+    //     for (int j = 0; j < domain.jSize(); ++j)
+    //         for (int k = 0; k < domain.kSize(); ++k)
+    //         {
+    //             double exact = -3*pi*pi*q_(i, j,k);
 
-                double actual = test(i, j, k);
+    //             double actual = test(i, j, k);
 
-                double error = std::abs(exact - actual);
+    //             double error = std::abs(exact - actual);
 
-                errfield(i, j, k) = error;
-                if (error > 1e-10)
-                {
-                    std::cerr << "Error at ("
-                        << i+1 << "," << j+1 << "," << k+1 << ") : "
-                        << actual << " instead of " << exact << "\n";
-                }
-            }
+    //             errfield(i, j, k) = error;
+    //             if (error > 1e-10)
+    //             {
+    //                 std::cerr << "Error at ("
+    //                     << i+1 << "," << j+1 << "," << k+1 << ") : "
+    //                     << actual << " instead of " << exact << "\n";
+    //             }
+    //         }
 
-    errfile.addField(errfield, 0);
+    // errfile.addField(errfield, 0);
 }

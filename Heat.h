@@ -1,10 +1,15 @@
+#ifndef HEAT_H_
+#define HEAT_H_
 #include "SharedInfrastructure.h"
 #include "StencilFramework.h"
+#include "KField.h"
+#include "QField.h"
+#include "HaloExchange3D.h"
 
 class Heat
 {
 public:
-    Heat(IJKRealField& q, Real coeff, Real dx, Real dt);
+    Heat(IJKRealField& q, Real coeff, Real dx, Real dt, MPI_Comm comm);
 
     void DoTimeStep();
 
@@ -13,16 +18,17 @@ public:
 private:
     // Scalars
     Real coeff_, dx2_;
-    Real dt_, dthalf_;
+    Real dt_, dthalf_, dtparam_;
 
     // Data fields
-    IJKRealField& q_;
-    IJKRealField qtempin_, qtempout_, k1_, k2_, k3_, k4_;
+    QField<IJKRealField> qs_;
+    KField<IJKRealField> ks_;
 
     // Stencils
-    Stencil stencil1_;
-    Stencil stencil2_;
-    Stencil stencil3_;
-    Stencil stencil4_;
-    Stencil stencilRK_;
+    Stencil laplaceStencil_, eulerStencil_, rkStencil_;
+
+    // HaloExchange
+    HaloExchange3D<IJKRealField> he_;
 };
+
+#endif // HEAT_H_

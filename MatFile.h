@@ -9,7 +9,7 @@ public:
     MatFile(const std::string& fname);
     void startCell(const std::string&, int n);
     void endCell();
-    void addField(const IJKRealField& field, int inc);
+    void addField(const IJKRealField& field, int inc = -1);
 
 private:
     std::ofstream fs_;
