@@ -154,6 +154,11 @@ void MatFile::addField(const IJKRealField& field, int inc)
             }
 }
 
+void MatFile::close()
+{
+    fs_.close();
+}
+
 void MatFile::writeHeader()
 {
     static const char description[] =
@@ -167,3 +172,4 @@ void MatFile::writeHeader()
     fs_.write(reinterpret_cast<const char*>(&version), 2);
     fs_.write(reinterpret_cast<const char*>(&endian), 2);
 }
+

@@ -1,5 +1,9 @@
 #include <iostream>
 #include <cmath>
+#include <cstdlib>
+
+#include "boost/program_options.hpp"
+
 #include "Heat.h"
 #include "MatFile.h"
 #include "HaloExchange3D.h"
@@ -12,14 +16,29 @@
 #include "L3/include/proc_grids_3D.h"
 #include "L3/include/Halo_Exchange_3D.h"
 
-const double pi = 3.14159265358979;
+namespace po = boost::program_options;
 
-void initializeQ(IJKRealField& q, Real dx, Real dy, Real dz, Real nu = 1., Real t = 0.)
+
+inline double exactQ(double nu, double x, double y, double z, double t)
+{
+    const double pi = 3.14159265358979;
+    return sin(2.*pi*x)*sin(2.*pi*y)*sin(2.*pi*z) * exp(-12.*pi*pi*nu*t);
+}
+
+void fillQ(IJKRealField& q, double nu, double t,
+                double xstart, double xend,
+                double ystart, double yend,
+                double zstart, double zend
+            )
 {
     IJKSize domain = q.calculationDomain();
     const int iSize = domain.iSize();
     const int jSize = domain.jSize();
     const int kSize = domain.kSize();
+
+    const double dxhalf = (xend-xstart)/iSize / 2.;
+    const double dyhalf = (yend-ystart)/jSize / 2.;
+    const double dzhalf = (zend-zstart)/kSize / 2.;
 
     double x, y, z;
 
@@ -27,41 +46,46 @@ void initializeQ(IJKRealField& q, Real dx, Real dy, Real dz, Real nu = 1., Real 
         for (int j = 0; j < jSize; ++j)
             for (int k = 0; k < kSize; ++k)
             {
-                x = (2*i+1)*dx / 2.;
-                y = (2*j+1)*dy / 2.;
-                z = (2*k+1)*dz / 2.;
-                q(i, j, k) = sin(2.*pi*x)*sin(2.*pi*y)*sin(2.*pi*z)
-                    * exp(-12.*pi*pi*nu*t);
+                x = xstart + (2*i+1)*dxhalf;
+                y = ystart + (2*j+1)*dyhalf;
+                z = zstart + (2*k+1)*dzhalf;
+                q(i, j, k) = exactQ(nu, x, y, z, t);
             }
 }
 
-double computeError(const IJKRealField& q, Real t, Real dx, Real dy, Real dz, Real nu = 1., IJKRealField* errfield=0)
+double computeError(const IJKRealField& q, double nu, double t,
+                double xstart, double xend,
+                double ystart, double yend,
+                double zstart, double zend,
+                IJKRealField* errfield=0
+            )
 {
-    double error = 0.;
-
     IJKSize domain = q.calculationDomain();
     const int iSize = domain.iSize();
     const int jSize = domain.jSize();
     const int kSize = domain.kSize();
 
-    Real x, y, z;
-    Real errinf = 0.;
-    Real exact, e;
-    Real exactinf;
+    const double dxhalf = (xend-xstart)/iSize / 2.;
+    const double dyhalf = (yend-ystart)/jSize / 2.;
+    const double dzhalf = (zend-zstart)/kSize / 2.;
+
+    double x, y, z;
+
+    double errinf = 0.;
+    double exact, e;
+    double exactinf;
 
     for (int i = 0; i < iSize; ++i)
         for (int j = 0; j < jSize; ++j)
             for (int k = 0; k < kSize; ++k)
             {
                 // Coordinates
-                x = (2*i+1)*dx / 2.;
-                y = (2*j+1)*dy / 2.;
-                z = (2*k+1)*dz / 2.;
+                x = xstart + (2*i+1)*dxhalf;
+                y = ystart + (2*j+1)*dyhalf;
+                z = zstart + (2*k+1)*dzhalf;
 
                 // Exact solution
-                exact = sin(2.*pi*x)*sin(2.*pi*y)*sin(2.*pi*z);
-                exact *= std::exp(-12.*pi*pi*nu*t);
-                //exact = x*x;
+                exact = exactQ(nu, x, y, z, t);
                 exactinf = std::max(std::abs(exact), exactinf);
 
                 // Error
@@ -72,84 +96,176 @@ double computeError(const IJKRealField& q, Real t, Real dx, Real dy, Real dz, Re
                 if (errfield)
                     (*errfield)(i, j, k) = e;
             }
-    std::cout << "Infinity norm of exact solution: " << exactinf << "\n";
-    std::cout << "Infinity norm of error: " << errinf << "\n";
     return errinf / exactinf;
+}
+
+struct HeatConfiguration
+{
+    double nu;
+    int gridsize;
+    int timesteps;
+    double endtime;
+    double cfl;
+    double dx;
+    double dt;
+    bool mat;
+};
+
+HeatConfiguration parseCommandLine(int argc, char **argv)
+{
+    HeatConfiguration conf;
+    conf.nu = 1.;
+    conf.gridsize = 32;
+    conf.timesteps = 500;
+    conf.endtime = 0.05;
+    conf.dx = 1. / conf.gridsize;
+    conf.dt = conf.endtime / conf.timesteps;
+    conf.cfl = conf.dt / (conf.dx*conf.dx);
+    conf.mat = false;
+
+    po::options_description desc("Allowed options");
+    desc.add_options()
+        ("help", "Produce this help message")
+        ("coeff", po::value<double>(), "Heat coefficient")
+        ("gridsize", po::value<int>(), "Number of gridpoints along each direction")
+        ("timesteps", po::value<int>(), "Number of timesteps")
+        ("endtime", po::value<double>(), "Time to simulate")
+        ("cfl", po::value<double>(), "Fixed CFL condition")
+        ("mat", "Output intermediate states")
+        ;
+
+    po::variables_map vm;
+    po::store(po::parse_command_line(argc, argv, desc), vm);
+    po::notify(vm);
+
+    if (vm.count("help"))
+    {
+        std::cout << desc << "\n";
+        std::exit(0);
+    }
+
+    conf.mat = vm.count("mat");
+
+    if (vm.count("coeff"))
+    {
+        conf.nu = vm["coeff"].as<double>();
+    }
+
+    if (vm.count("endtime"))
+    {
+        conf.endtime = vm["endtime"].as<double>();
+        conf.dt = conf.endtime / conf.timesteps;
+    }
+
+    if (vm.count("cfl") && vm.count("gridsize") && vm.count("timesteps"))
+    {
+        std::cerr << "Error: setting cfl, gridsize and timesteps not allowed\n";
+        std::cerr << "Aborting\n";
+        std::exit(1);
+    }
+
+    bool gridsizeSet = false;
+    bool timestepsSet = false;
+    if (vm.count("gridsize"))
+    {
+        conf.gridsize = vm["gridsize"].as<int>();
+        conf.dx = 1. / conf.gridsize;
+        gridsizeSet = true;
+    }
+
+    if (vm.count("timesteps"))
+    {
+        conf.timesteps = vm["timesteps"].as<int>();
+        conf.dt = conf.endtime / conf.timesteps;
+        timestepsSet = true;
+    }
+
+    if (vm.count("cfl"))
+    {
+        double cfl = vm["cfl"].as<double>();
+        if (gridsizeSet)
+        {
+            double dt = conf.dx*conf.dx * cfl / conf.nu;
+            conf.timesteps = conf.endtime / dt + .5;
+            conf.dt = conf.endtime / conf.timesteps;
+            conf.cfl = conf.dt * conf.nu / (conf.dx*conf.dx);
+        }
+        else // Also apply if nothing else is specified
+        {
+            double dx = std::sqrt(conf.dt * conf.nu / cfl);
+            conf.gridsize = 1. / dx + .5;
+            conf.dx = 1. / conf.gridsize;
+            conf.cfl = conf.dt * conf.nu / (conf.dx*conf.dx);
+        }
+    }
+
+    // Compute the CFL in any case
+    conf.cfl = conf.dt * conf.nu / (conf.dx * conf.dx);
+
+    return conf;
 }
 
 int main(int argc, char **argv)
 {
-    typedef GCL::MPI_3D_process_grid_t<GCL::gcl_utils::boollist<3> > GridType;
+    // Parse command-line arguments
+    HeatConfiguration conf = parseCommandLine(argc, argv);
 
     // Initialize GCL
     GCL::GCL_Init();
+    typedef GCL::gcl_utils::boollist<3> CyclicType;
+    typedef GCL::MPI_3D_process_grid_t<CyclicType> GridType;
+    const bool isRoot = GCL::PID == 0;
 
     // Initialize grid
     int commsize;
     MPI_Comm_size(MPI_COMM_WORLD, &commsize);
 
-    int dims[3] = {0, 0, 1};
+    int dims[3] = {0, 0, 0};
     int periods[3] = {1, 1, 1};
     MPI_Dims_create(GCL::PROCS, 3, dims);
     MPI_Comm comm;
     MPI_Cart_create(MPI_COMM_WORLD, 3, dims, periods, 0, &comm);
 
-    // Read command-line arguemnts
-    int size = 64;
-    double dt, dx, dy, dz;
-    int timesteps = 100;
-    bool forceTimesteps = false;
-    if (argc > 1)
+    if (dims[0] != dims[1] || dims[0] != dims[2])
     {
-        if (argc > 1)
+        if (isRoot)
         {
-            size = std::atoi(argv[1]);
+            std::cerr << "Non-cubic distribution is not allowed\n";
+            std::cerr << "Aborting\n";
         }
-        if (argc > 2)
-        {
-            timesteps = std::atoi(argv[2]);
-            forceTimesteps = true;
-        }
-        if (argc > 3)
-        {
-            std::cout << "Usage: heat [size [timesteps]]\n";
-            std::cout << "Aborting\n";
-            return -1;
-        }
+        return 2;
     }
 
-    // Keep CFL constant at 0.1
-    const double endtime = 0.05;
-    double cfl = 0.2;
-    if (!forceTimesteps)
-        timesteps = endtime * (size+1)*(size+1) / cfl + 0.5;
+    // Get position on grid
+    GridType grid(CyclicType(true, true, true), comm);
+    int myPI, myPJ, myPK;
+    grid.coords(myPI, myPJ, myPK);
 
-    if (size == 0) {
-        std::cin >> size;
-        timesteps = 0;
-    }
-
-    //timesteps = (timesteps + 19)/20*20;
-    dt = 0.05 / timesteps;
-    dx = dy = dz = 1. / (size);
-    double nu = dx;
-
-    cfl = 1. * dt / (dx*dx);
+    // Owned physical space
+    const double Dx = 1. / dims[0];
+    const double Dy = 1. / dims[1];
+    const double Dz = 1. / dims[2];
+    const double xstart = Dx * myPI;
+    const double ystart = Dy * myPJ;
+    const double zstart = Dz * myPK;
+    const double xend = Dx * (myPI + 1);
+    const double yend = Dy * (myPJ + 1);
+    const double zend = Dz * (myPK + 1);
 
     // Output configuration
+    if (isRoot)
     std::cout << "Running with:\n"
-        << " - domain size: " << size << "x" << size << "x" << size << "\n"
-        << " - spatial discretization step: " << dx << "\n"
-        << " - timestep size: " << dt << "\n"
-        << " - timesteps: " << timesteps << "\n"
-        << " - final time: " << timesteps*dt << "\n"
-        << " - heat coefficient: " << nu << "\n"
-        << " - CFL: " << cfl << "\n\n";
-
+        << " - grid size: " << conf.gridsize << "x" << conf.gridsize << "x" << conf.gridsize << "\n"
+        << " - spatial discretization step: " << conf.dx << "\n"
+        << " - timestep size: " << conf.dt << "\n"
+        << " - timesteps: " << conf.timesteps << "\n"
+        << " - endtime: " << conf.endtime << "\n"
+        << " - heat coefficient: " << conf.nu << "\n"
+        << " - CFL: " << conf.cfl << "\n\n";
 
     // Create q
     IJKSize calculationDomain;
-    calculationDomain.Init(size, size, size);
+    calculationDomain.Init(conf.gridsize/dims[0], conf.gridsize/dims[1], conf.gridsize/dims[2]);
     KBoundary kboundary;
     kboundary.Init(-3, 3);
     IJKRealField q, errfield, exactfield;
@@ -158,51 +274,59 @@ int main(int argc, char **argv)
     exactfield.Init("exact", calculationDomain, kboundary);
 
     // Initialize content of q
-    initializeQ(q, dx, dy, dz, nu);
- 
-    // Initialize stencil
-    Heat heat(q, nu, dx, dt, comm);
+    fillQ(q, conf.nu, 0., xstart, xend, ystart, yend, zstart, zend);
 
-    if (timesteps == 0)
-    {
-        // Do test, exit
-        heat.DoTest();
-        std::cout << "Exiting\n";
-        return 0;
-    }
+    // Initialize stencil
+    Heat heat(q, conf.nu, conf.dx, conf.dt, comm);
 
     // Initialize MAT file
-    MatFile mat("heat.mat");
-    // MatFile errfile("error.mat");
-    mat.startCell("q", timesteps/20+1);
-    // errfile.startCell("q", timesteps/20+1);
-    mat.addField(q, 0);
+    MatFile *mat;
+    if (conf.mat)
+    {
+        std::ostringstream fnameMat;
+        fnameMat << "heat_" << myPI << "_" << myPJ << "_" << myPK << ".mat";
+        mat = new MatFile(fnameMat.str());
+        mat->startCell("q", conf.timesteps);
+        mat->addField(q, 0);
+    }
 
     double error;
-    // error = computeError(q, 0., dx, dy ,dz, &errfield);
-    // errfile.addField(errfield, 0);
 
-    for (int t = 1; t <= timesteps; ++t) {
+    for (int t = 1; t <= conf.timesteps; ++t) {
         heat.DoTimeStep();
-        //error = computeError(q, dt * t, dx, dy ,dz, &errfield);
 
-         //if (t % 20 == 0) {
-         //    std::cout << "Timestep " << t << " done" << std::endl;
-         //    mat.addField(q, t/20);
-         //    errfile.addField(errfield, timesteps/20);
-         //}
+        if (conf.mat)
+            mat->addField(q, t);
     }
-    
-    std::cout << "Error at end: " << computeError(q, endtime, dx, dy, dz, nu, &errfield) << "\n";
-    initializeQ(exactfield, dx, dy, dz, nu, timesteps*dt);
 
-    MatFile matfile("result.mat");
-    matfile.addField(q, timesteps);
-    matfile.addField(errfield, timesteps);
-    matfile.addField(exactfield, timesteps);
+    // Close MAT file
+    if (conf.mat)
+    {
+        mat->endCell();
+        delete mat;
+    }
 
-    mat.endCell();
-    // errfile.endCell();
+    double errorAtEnd = computeError(q, conf.nu, conf.endtime,
+                                     xstart, xend, ystart, yend,
+                                     zstart, zend, &errfield);
+    std::vector<double> errorsAtEnd(GCL::PROCS);
+    MPI_Gather(&errorAtEnd, 1, MPI_DOUBLE, &errorsAtEnd[0], 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+    if (isRoot)
+    for (int p = 0; p < GCL::PROCS; ++p)
+    {
+        std::cout << "Error in proc " << p << ": " << errorsAtEnd[p] << "\n";
+    }
+
+    fillQ(exactfield, conf.nu, conf.endtime, xstart, xend, ystart, yend, zstart, zend);
+
+    std::ostringstream fnameResult;
+    fnameResult << "result_" << myPI << "_" << myPJ << "_" << myPK << ".mat";
+
+    MatFile matfile(fnameResult.str());
+    matfile.addField(q, conf.timesteps);
+    matfile.addField(errfield, conf.timesteps);
+    matfile.addField(exactfield, conf.timesteps);
 
     // Finalize GCL
     GCL::GCL_Finalize();
