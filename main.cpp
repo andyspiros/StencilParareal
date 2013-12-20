@@ -16,6 +16,11 @@
 #include "L3/include/proc_grids_3D.h"
 #include "L3/include/Halo_Exchange_3D.h"
 
+#ifndef __CUDA_BACKEND__
+# include <omp.h>
+#endif
+
+
 namespace po = boost::program_options;
 
 
@@ -261,7 +266,11 @@ int main(int argc, char **argv)
         << " - timesteps: " << conf.timesteps << "\n"
         << " - endtime: " << conf.endtime << "\n"
         << " - heat coefficient: " << conf.nu << "\n"
-        << " - CFL: " << conf.cfl << "\n\n";
+        << " - CFL: " << conf.cfl << "\n"
+#ifndef __CUDA_BACKEND__
+        << " - OpenMP threads: " << omp_get_num_threads()
+#endif
+        << "\n";
 
     // Create q
     IJKSize calculationDomain;
