@@ -71,10 +71,8 @@ set (SOURCES
 )
 
 if (${CUDA_BACKEND})
-    message ("Compiling the CUDA version")
     cuda_add_executable (heat ${SOURCES} "Heat.cu")
 else()
-    message ("Compiling the OpenMP version")
     add_executable (heat ${SOURCES} "Heat.cpp")
 endif()
 

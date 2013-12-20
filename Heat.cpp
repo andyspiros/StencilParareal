@@ -4,6 +4,7 @@
 #include "Heat.h"
 #include "SharedInfrastructure.h"
 #include "StencilFramework.h"
+#include "mpi.h"
 
 const double pi = 3.14159265358979;
 
@@ -149,9 +150,6 @@ Heat::Heat(IJKRealField& data, Real heatcoeff, Real stepsize, Real timestepsize,
     , dt_(timestepsize), dthalf_(.5 * timestepsize)
     , he_(true, true, true, comm)
 {
-    std::cout << "Ok, we have gridsize=" << data.calculationDomain().iSize()
-        << ", dx=" << stepsize << "\n" << std::flush;
-
 #ifdef __CUDA_BACKEND__
     typedef BlockSize<32, 4> BSize;
 #else
@@ -247,51 +245,60 @@ Heat::~Heat()
 
 void Heat::DoTimeStep()
 {
+    double elaplace, eeuler, erk, ecomm;
+    DoTimeStep(elaplace, eeuler, erk, ecomm);
+}
+
+void Heat::DoTimeStep(double& elaplace, double& eeuler, double& erk, double& ecomm)
+{
+    double e;
+    elaplace = 0., eeuler = 0., erk = 0., ecomm = 0.;
+    
     /* First RK timestep */
     ks_.set(1);
     qs_.setLaplaceMain();
-    he_.exchange();
-    laplaceStencil_->Apply();
+    e = MPI_Wtime(); he_.exchange(); ecomm += MPI_Wtime() - e;
+    e = MPI_Wtime(); laplaceStencil_->Apply(); elaplace += MPI_Wtime()-e;
     // Now: k1 = laplace(qmain)
 
     /* Second RK timestep */
     qs_.restore();
     dtparam_ = dthalf_;
-    eulerStencil_->Apply();
+    e = MPI_Wtime(); eulerStencil_->Apply(); eeuler += MPI_Wtime()-e;
     // Now: qtemp = qmain + dthalf_*k1
 
     ks_.set(2);
     qs_.setLaplaceTemp();
-    he_.exchange();
-    laplaceStencil_->Apply();
+    e = MPI_Wtime(); he_.exchange(); ecomm += MPI_Wtime()-e;
+    e = MPI_Wtime(); laplaceStencil_->Apply(); elaplace += MPI_Wtime()-e;
     // Now: k2 = laplace(qmain + dthalf_*k1)
     
     /* Third RK timestep */
     qs_.restore();
-    eulerStencil_->Apply();
+    e = MPI_Wtime(); eulerStencil_->Apply(); eeuler += MPI_Wtime()-e;
     // Now: qtemp = qmain + dthalf_*k2
 
     ks_.set(3);
     qs_.setLaplaceTemp();
-    he_.exchange();
-    laplaceStencil_->Apply();
+    e = MPI_Wtime(); he_.exchange(); ecomm += MPI_Wtime()-e;
+    e = MPI_Wtime(); laplaceStencil_->Apply(); elaplace += MPI_Wtime()-e;
     // Now: k3 = laplace(qmain + dthalf_*k2)
     
     /* Fourth RK timestep */
     qs_.restore();
     dtparam_ = dt_;
-    eulerStencil_->Apply();
+    e = MPI_Wtime(); eulerStencil_->Apply(); eeuler += MPI_Wtime()-e;
     // Now: qtemp = qmain + dt_*k3
 
     ks_.set(4);
     qs_.setLaplaceTemp();
-    he_.exchange();
-    laplaceStencil_->Apply();
+    e = MPI_Wtime(); he_.exchange(); ecomm += MPI_Wtime()-e;
+    e = MPI_Wtime(); laplaceStencil_->Apply(); elaplace += MPI_Wtime()-e;
     // Now: k4 = laplace(qmain + dt_*k3)
 
     /* Final RK stage: put things together */
     ks_.restore();
     qs_.restore();
-    rkStencil_->Apply();
+    e = MPI_Wtime(); rkStencil_->Apply(); erk += MPI_Wtime()-e;
 }
 

@@ -291,14 +291,21 @@ int main(int argc, char **argv)
         mat->addField(q, 0);
     }
 
-    double error;
-
+    // Solve equation
+    double e = MPI_Wtime();
+    double elaplaceTot = 0., eeulerTot = 0., erkTot = 0., ecommTot = 0.;
+    double elaplace, eeuler, erk, ecomm;
     for (int t = 1; t <= conf.timesteps; ++t) {
-        heat.DoTimeStep();
+        heat.DoTimeStep(elaplace, eeuler, erk, ecomm);
+        elaplaceTot += elaplace;
+        eeulerTot += eeuler;
+        erkTot += erk;
+        ecommTot += ecomm;
 
         if (conf.mat)
             mat->addField(q, t);
     }
+    e = MPI_Wtime() - e;
 
     // Close MAT file
     if (conf.mat)
@@ -317,16 +324,25 @@ int main(int argc, char **argv)
 
     if (isRoot)
     {
+        std::cout << "Timing results:\n"
+            << " - laplace stencil: " << elaplaceTot * 1000. << " msec\n"
+            << " - euler stencil: " << eeulerTot * 1000. << " msec\n"
+            << " - rk stencil: " << erkTot * 1000. << " msec\n"
+            << " - halo exchange: " << ecommTot * 1000. << " msec\n"
+            << "\n";
+
+        std::cout << "Errors on al processes:\n";
         double totExactInf = 0.;
         double totErrorInf = 0.;
         for (int p = 0; p < GCL::PROCS; ++p)
         {
             totExactInf = std::max(totExactInf, infsAtEnd[2*p]);
             totErrorInf = std::max(totErrorInf, infsAtEnd[2*p+1]);
-            std::cout << "Process " << p << " has exact=" << infsAtEnd[2*p]
+            std::cout << " - Process " << p << " has exact=" << infsAtEnd[2*p]
                 << ", error=" << infsAtEnd[2*p+1] << "\n";
         }
-        std::cout << "Relative error: " << totErrorInf/totExactInf << "\n";
+        std::cout << "\n Total relative error: "
+            << totErrorInf/totExactInf << "\n";
     }
 
     fillQ(exactfield, conf.nu, conf.endtime, xstart, xend, ystart, yend, zstart, zend);

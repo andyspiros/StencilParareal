@@ -15,6 +15,7 @@ public:
     ~Heat();
 
     void DoTimeStep();
+    void DoTimeStep(double&, double&, double&, double&);
 
 private:
     // Scalars
