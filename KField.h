@@ -29,7 +29,7 @@ public:
     DataFieldType& k3() { return k3_; }
     DataFieldType& k4() { return k4_; }
 
-    int set(int id)
+    void set(int id)
     {
         restore();
         switch (id)

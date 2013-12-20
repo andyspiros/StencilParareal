@@ -16,6 +16,7 @@ if ("${CUDA_BACKEND}")
     find_package(CUDA 5.0 REQUIRED)
     add_definitions( -D__CUDA_BACKEND__ )
     set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -arch=sm_21) # -Xptxas -abi=no
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GCL_GPU_")
 else()
     # OpenMP
     find_package(OpenMP REQUIRED)
@@ -60,17 +61,23 @@ if( "${CUDA_BACKEND}" STREQUAL "ON" )
     include_directories(${CUDA_INCLUDE_DIRS})
 endif()
 
+# Create GCL library
+add_library(gcl "${GCL_PATH}/L3/src/GCL.cpp")
 
 # Create executable
 set (SOURCES
     "main.cpp"
-    "Heat.cpp"
     "MatFile.cpp"
-    "${GCL_PATH}/L3/src/GCL.cpp"
 )
 
-add_executable (heat ${SOURCES})
+if (${CUDA_BACKEND})
+    message ("Compiling the CUDA version")
+    cuda_add_executable (heat ${SOURCES} "Heat.cu")
+else()
+    message ("Compiling the OpenMP version")
+    add_executable (heat ${SOURCES} "Heat.cpp")
+endif()
 
 # Link against shared infrastructure library for debug
-target_link_libraries (heat "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
+target_link_libraries (heat gcl "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
 
