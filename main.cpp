@@ -62,6 +62,7 @@ double computeError(const IJKRealField& q, double nu, double t,
                 double xstart, double xend,
                 double ystart, double yend,
                 double zstart, double zend,
+                double& exact_inf, double &error_inf,
                 IJKRealField* errfield=0
             )
 {
@@ -76,9 +77,9 @@ double computeError(const IJKRealField& q, double nu, double t,
 
     double x, y, z;
 
-    double errinf = 0.;
+    error_inf = 0.;
+    exact_inf = 0.;
     double exact, e;
-    double exactinf;
 
     for (int i = 0; i < iSize; ++i)
         for (int j = 0; j < jSize; ++j)
@@ -91,17 +92,17 @@ double computeError(const IJKRealField& q, double nu, double t,
 
                 // Exact solution
                 exact = exactQ(nu, x, y, z, t);
-                exactinf = std::max(std::abs(exact), exactinf);
+                exact_inf = std::max(std::abs(exact), exact_inf);
 
                 // Error
                 e = q(i,j,k) - exact;
-                errinf = std::max(std::abs(e), errinf);
+                error_inf = std::max(std::abs(e), error_inf);
 
                 // Error field
                 if (errfield)
                     (*errfield)(i, j, k) = e;
             }
-    return errinf / exactinf;
+    return error_inf / exact_inf;
 }
 
 struct HeatConfiguration
@@ -315,16 +316,26 @@ int main(int argc, char **argv)
         delete mat;
     }
 
+    // Compute error
+    double infAtEnd[2];
     double errorAtEnd = computeError(q, conf.nu, conf.endtime,
                                      xstart, xend, ystart, yend,
-                                     zstart, zend, &errfield);
-    std::vector<double> errorsAtEnd(GCL::PROCS);
-    MPI_Gather(&errorAtEnd, 1, MPI_DOUBLE, &errorsAtEnd[0], 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+                                     zstart, zend, infAtEnd[0], infAtEnd[1], &errfield);
+    std::vector<double> infsAtEnd(2*GCL::PROCS);
+    MPI_Gather(infAtEnd, 2, MPI_DOUBLE, &infsAtEnd[0], 2, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     if (isRoot)
-    for (int p = 0; p < GCL::PROCS; ++p)
     {
-        std::cout << "Error in proc " << p << ": " << errorsAtEnd[p] << "\n";
+        double totExactInf = 0.;
+        double totErrorInf = 0.;
+        for (int p = 0; p < GCL::PROCS; ++p)
+        {
+            totExactInf = std::max(totExactInf, infsAtEnd[2*p]);
+            totErrorInf = std::max(totErrorInf, infsAtEnd[2*p+1]);
+            std::cout << "Process " << p << " has exact=" << infsAtEnd[2*p]
+                << ", error=" << infsAtEnd[2*p+1] << "\n";
+        }
+        std::cout << "Relative error: " << totErrorInf/totExactInf << "\n";
     }
 
     fillQ(exactfield, conf.nu, conf.endtime, xstart, xend, ystart, yend, zstart, zend);
@@ -333,10 +344,11 @@ int main(int argc, char **argv)
     fnameResult << "result_" << myPI << "_" << myPJ << "_" << myPK << ".mat";
 
     MatFile matfile(fnameResult.str());
-    matfile.addField(q, conf.timesteps);
-    matfile.addField(errfield, conf.timesteps);
-    matfile.addField(exactfield, conf.timesteps);
+    matfile.addField(q, -1);
+    matfile.addField(errfield, -1);
+    matfile.addField(exactfield, -1);
 
     // Finalize GCL
     GCL::GCL_Finalize();
 }
+
