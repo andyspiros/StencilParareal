@@ -1,11 +1,39 @@
 #! /bin/bash -l
-#SBATCH --nodes=1
-#SBATCH --time=4:00:00
-for Nx in 8 16 32 64 128
-do
-    for timesteps in 10 50 100 500 1000
-    do
-        time build/heat $Nx $timesteps
-        echo -e "\n------------------------------------------------------------\n\n\n"
-    done
-done
+#SBATCH --nodes=64
+#SBATCH --time=1:00:00
+
+#echo "Single process"
+#echo
+#aprun -n 1 build/heat --gridsize=64 --cfl=0.1 | grep msec | cut -d " " -f 5
+#echo
+#echo "---------------------------------------------------------------"
+
+echo "64 processes, 1 process per node, 16 threads"
+echo
+OMP_NUM_THREADS=16 aprun -n 64 -N 1 -d 16 build/heat --gridsize=128 --cfl=0.1 | grep msec | cut -d " " -f 5
+echo
+echo "---------------------------------------------------------------"
+
+echo "64 processes, 2 process per node, 8 threads"
+echo
+OMP_NUM_THREADS=8 aprun -n 64 -N 2 -d 8 -cc 0,2,4,6,8,10,12,14 build/heat --gridsize=128 --cfl=0.1 | grep msec | cut -d " " -f 5
+echo
+echo "---------------------------------------------------------------"
+
+echo "64 processes, 4 process per node, 4 threads"
+echo
+OMP_NUM_THREADS=4 aprun -n 64 -N 4 -d 4 -cc 0,4,8,12 build/heat --gridsize=128 --cfl=0.1 | grep msec | cut -d " " -f 5
+echo
+echo "---------------------------------------------------------------"
+
+echo "64 processes, 8 process per node, 2 threads"
+echo
+OMP_NUM_THREADS=2 aprun -n 64 -N 8 -d 2 -cc 0,8 build/heat --gridsize=128 --cfl=0.1 | grep msec | cut -d " " -f 5
+echo
+echo "---------------------------------------------------------------"
+
+echo "64 processes, 16 process per node, 1 threads"
+echo
+OMP_NUM_THREADS=1 aprun -n 64 -N 16 -d 1 build/heat --gridsize=128 --cfl=0.1 | grep msec | cut -d " " -f 5
+echo
+echo "---------------------------------------------------------------"

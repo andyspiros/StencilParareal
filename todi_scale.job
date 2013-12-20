@@ -1,0 +1,40 @@
+#! /bin/bash -l
+#SBATCH --nodes=125
+#SBATCH --time=1:00:00
+
+#echo "Single process"
+#echo
+#aprun -n 1 build/heat --gridsize=64 --cfl=0.1 | grep msec | cut -d " " -f 5
+#echo
+#echo "---------------------------------------------------------------"
+
+echo "1 process, 1 process per node, 16 threads"
+echo
+OMP_NUM_THREADS=16 aprun -n 1 -N 1 -d 16 build/heat --gridsize=128 --cfl=0.1 | grep msec | cut -d " " -f 5
+echo
+echo "---------------------------------------------------------------"
+
+echo "8 processes, 1 process per node, 16 threads"
+echo
+OMP_NUM_THREADS=16 aprun -n 8 -N 1 -d 16 build/heat --gridsize=128 --cfl=0.1 | grep msec | cut -d " " -f 5
+echo
+echo "---------------------------------------------------------------"
+
+echo "27 processes, 1 process per node, 16 threads"
+echo
+OMP_NUM_THREADS=16 aprun -n 27 -N 1 -d 16 build/heat --gridsize=128 --cfl=0.1 | grep msec | cut -d " " -f 5
+echo
+echo "---------------------------------------------------------------"
+
+echo "64 processes, 1 process per node, 8 threads"
+echo
+OMP_NUM_THREADS=16 aprun -n 64 -N 1 -d 16 build/heat --gridsize=128 --cfl=0.1 | grep msec | cut -d " " -f 5
+echo
+echo "---------------------------------------------------------------"
+
+echo "125 processes, 1 process per node, 8 threads"
+echo
+OMP_NUM_THREADS=16 aprun -n 125 -N 1 -d 16 build/heat --gridsize=128 --cfl=0.1 | grep msec | cut -d " " -f 5
+echo
+echo "---------------------------------------------------------------"
+

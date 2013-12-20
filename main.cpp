@@ -268,9 +268,6 @@ int main(int argc, char **argv)
         << " - endtime: " << conf.endtime << "\n"
         << " - heat coefficient: " << conf.nu << "\n"
         << " - CFL: " << conf.cfl << "\n"
-#ifndef __CUDA_BACKEND__
-        << " - OpenMP threads: " << omp_get_num_threads()
-#endif
         << "\n";
 
     // Create q
@@ -306,6 +303,9 @@ int main(int argc, char **argv)
     double elaplace, eeuler, erk, ecomm;
     for (int t = 1; t <= conf.timesteps; ++t) {
         heat.DoTimeStep(elaplace, eeuler, erk, ecomm);
+        if (isRoot && t%20 == 0)
+           std::cout << "Done timestep " << t << std::endl; 
+
         elaplaceTot += elaplace;
         eeulerTot += eeuler;
         erkTot += erk;
@@ -338,9 +338,10 @@ int main(int argc, char **argv)
             << " - euler stencil: " << eeulerTot * 1000. << " msec\n"
             << " - rk stencil: " << erkTot * 1000. << " msec\n"
             << " - halo exchange: " << ecommTot * 1000. << " msec\n"
+            << " - total time: " << e * 1000. << " msec\n"
             << "\n";
 
-        std::cout << "Errors on al processes:\n";
+        std::cout << "Errors on all processes:\n";
         double totExactInf = 0.;
         double totErrorInf = 0.;
         for (int p = 0; p < GCL::PROCS; ++p)
