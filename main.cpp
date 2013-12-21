@@ -23,6 +23,39 @@
 
 namespace po = boost::program_options;
 
+void computeLocalSizes(int globalSize, int nprocs,
+        std::vector<int>& localSizes,
+        std::vector<double>& xstarts, std::vector<double>& xends)
+{
+    localSizes.resize(nprocs);
+    xstarts.resize(nprocs);
+    xends.resize(nprocs);
+
+    const float dx = 1. / globalSize;
+
+    double l = static_cast<double>(globalSize) / nprocs;
+    int lp = static_cast<int>(std::ceil(l));
+    int lm = static_cast<int>(std::floor(l));
+
+    int pp = globalSize - lm*nprocs;
+    int p;
+
+    int start = 0;
+    for (p = 0; p < pp; ++p)
+    {
+        localSizes[p] = lp;
+        xstarts[p] = start*dx;
+        start += lp;
+        xends[p] = start*dx;
+    }
+    for (; p < nprocs; ++p)
+    {
+        localSizes[p] = lm;
+        xstarts[p] = start*dx;
+        start += lm;
+        xends[p] = start*dx;
+    }
+}
 
 inline double exactQ(double nu, double x, double y, double z, double t)
 {
@@ -232,15 +265,12 @@ int main(int argc, char **argv)
     MPI_Comm comm;
     MPI_Cart_create(MPI_COMM_WORLD, 3, dims, periods, 0, &comm);
 
-    if (dims[0] != dims[1] || dims[0] != dims[2])
-    {
-        if (isRoot)
-        {
-            std::cerr << "Non-cubic distribution is not allowed\n";
-            std::cerr << "Aborting\n";
-        }
-        return 2;
-    }
+    std::vector<int> localSizesI, localSizesJ, localSizesK;
+    std::vector<double> xstarts, xends, ystarts, yends, zstarts, zends;
+    computeLocalSizes(conf.gridsize, dims[0], localSizesI, xstarts, xends);
+    computeLocalSizes(conf.gridsize, dims[1], localSizesJ, ystarts, yends);
+    computeLocalSizes(conf.gridsize, dims[2], localSizesK, zstarts, zends);
+
 
     // Get position on grid
     GridType grid(CyclicType(true, true, true), comm);
@@ -251,28 +281,46 @@ int main(int argc, char **argv)
     const double Dx = 1. / dims[0];
     const double Dy = 1. / dims[1];
     const double Dz = 1. / dims[2];
-    const double xstart = Dx * myPI;
-    const double ystart = Dy * myPJ;
-    const double zstart = Dz * myPK;
-    const double xend = Dx * (myPI + 1);
-    const double yend = Dy * (myPJ + 1);
-    const double zend = Dz * (myPK + 1);
+    const double xstart = xstarts[myPI];
+    const double ystart = ystarts[myPJ];
+    const double zstart = zstarts[myPK];
+    const double xend = xends[myPI];
+    const double yend = yends[myPJ];
+    const double zend = zends[myPK];
 
     // Output configuration
     if (isRoot)
-    std::cout << "Running with:\n"
-        << " - grid size: " << conf.gridsize << "x" << conf.gridsize << "x" << conf.gridsize << "\n"
-        << " - spatial discretization step: " << conf.dx << "\n"
-        << " - timestep size: " << conf.dt << "\n"
-        << " - timesteps: " << conf.timesteps << "\n"
-        << " - endtime: " << conf.endtime << "\n"
-        << " - heat coefficient: " << conf.nu << "\n"
-        << " - CFL: " << conf.cfl << "\n"
-        << "\n";
+    {
+        std::cout << "Running with:\n"
+            << " - grid size: " << conf.gridsize << "x" << conf.gridsize << "x" << conf.gridsize << "\n"
+            << " - spatial discretization step: " << conf.dx << "\n"
+            << " - timestep size: " << conf.dt << "\n"
+            << " - timesteps: " << conf.timesteps << "\n"
+            << " - endtime: " << conf.endtime << "\n"
+            << " - heat coefficient: " << conf.nu << "\n"
+            << " - CFL: " << conf.cfl << "\n"
+            << "\n";
+
+        std::cout << "Spatial configuration:\n";
+        for (int p = 0; p < GCL::PROCS; ++p)
+        {
+            int coords[3];
+            MPI_Cart_coords(comm, p, 3, coords);
+            std::cout << " - Process " << p << " is "
+                << "(" << coords[0] << ", " << coords[1] << ", " << coords[2] << ")\n"
+                << "   -- Local grid: " << localSizesI[coords[0]] << "x"
+                << localSizesJ[coords[1]] << "x" << localSizesK[coords[2]] << "\n"
+                << "   -- Starting coordinates: (" << xstarts[coords[0]] << ", "
+                << ystarts[coords[1]] << ", " << zstarts[coords[2]] << ")\n"
+                << "   -- Ending coordinates: (" << xends[coords[0]] << ", "
+                << yends[coords[1]] << ", " << zends[coords[2]] << ")\n"
+                ;
+        }
+    }
 
     // Create q
     IJKSize calculationDomain;
-    calculationDomain.Init(conf.gridsize/dims[0], conf.gridsize/dims[1], conf.gridsize/dims[2]);
+    calculationDomain.Init(localSizesI[myPI], localSizesJ[myPJ], localSizesK[myPK]);
     KBoundary kboundary;
     kboundary.Init(-3, 3);
     IJKRealField q, errfield, exactfield;
@@ -303,8 +351,6 @@ int main(int argc, char **argv)
     double elaplace, eeuler, erk, ecomm;
     for (int t = 1; t <= conf.timesteps; ++t) {
         heat.DoTimeStep(elaplace, eeuler, erk, ecomm);
-        if (isRoot && t%20 == 0)
-           std::cout << "Done timestep " << t << std::endl; 
 
         elaplaceTot += elaplace;
         eeulerTot += eeuler;
