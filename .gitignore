@@ -15,5 +15,8 @@
 *.la
 *.a
 
+# Slurm files
+slurm*.out
+
 # Build directory(ies)
 build*
