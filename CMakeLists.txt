@@ -42,7 +42,7 @@ set (SHARED_INFRASTRUCTURE_LIB
 
 # GCL
 set (GCL_PATH "${STENCIL_LIBRARY_SRC_PATH}/../libs/gcl")
-set(USE_MPI_COMPILER "OFF" CACHE BOOL "On rosa turn this flag off since compiler takes care of mpi already" )
+set(USE_MPI_COMPILER "OFF" CACHE BOOL "On CSCS machines turn this flag off since compiler takes care of mpi already" )
 find_package(MPI REQUIRED)
 add_definitions ("-D_GCL_MPI_" "-D__GCL__")
 include_directories (
@@ -66,14 +66,14 @@ add_library(gcl "${GCL_PATH}/L3/src/GCL.cpp")
 
 # Create executable
 set (SOURCES
-    "main.cpp"
-    "MatFile.cpp"
+    "src/Heat/main.cpp"
+    "src/Heat/MatFile.cpp"
 )
 
 if (${CUDA_BACKEND})
-    cuda_add_executable (heat ${SOURCES} "Heat.cu")
+    cuda_add_executable (heat ${SOURCES} "src/Heat/Heat.cu")
 else()
-    add_executable (heat ${SOURCES} "Heat.cpp")
+    add_executable (heat ${SOURCES} "src/Heat/Heat.cpp")
 endif()
 
 # Link against shared infrastructure library for debug
