@@ -64,18 +64,37 @@ endif()
 # Create GCL library
 add_library(gcl "${GCL_PATH}/L3/src/GCL.cpp")
 
-# Create executable
-set (SOURCES
+# Stencil for laplacian
+set(USE_4TH_ORDER_LAPLACE "ON" CACHE BOOL "Whether to use a five-point stencil to achieve 4th order convergence")
+if ("${USE_4TH_ORDER_LAPLACE}")
+    add_definitions("-DFIVE_POINT_STENCIL")
+endif("${USE_4TH_ORDER_LAPLACE}")
+
+# Create executable heat
+set (HEATSOURCES
     "src/Heat/main.cpp"
     "src/Heat/MatFile.cpp"
 )
 
 if (${CUDA_BACKEND})
-    cuda_add_executable (heat ${SOURCES} "src/Heat/Heat.cu")
+    cuda_add_executable (heat ${HEATSOURCES} "src/Heat/Heat.cu")
 else()
-    add_executable (heat ${SOURCES} "src/Heat/Heat.cpp")
+    add_executable (heat ${HEATSOURCES} "src/Heat/Heat.cpp")
 endif()
 
-# Link against shared infrastructure library for debug
 target_link_libraries (heat gcl "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
 
+
+# Create executable convection
+set (CONVECTIONSOURCES
+    "src/Convection/main.cpp"
+    "src/Convection/MatFile.cpp"
+)
+
+if (${CUDA_BACKEND})
+    cuda_add_executable (convection ${CONVECTIONSOURCES} "src/Convection/Convection.cu")
+else()
+    add_executable (convection ${CONVECTIONSOURCES} "src/Convection/Convection.cpp")
+endif()
+
+target_link_libraries (convection gcl "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")

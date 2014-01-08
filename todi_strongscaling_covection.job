@@ -1,0 +1,27 @@
+#!/bin/bash -l
+#SBATCH --time=04:00:00
+#SBATCH --nodes=256
+
+BASEDIR="$(pwd)/results_scale_convection"
+EXE="$(pwd)/build/convection"
+
+for s in 1 2 4 8 16 32 64 128 256
+do
+    RESULTDIR="${BASEDIR}/result_${s}"
+    OUTFILE="${RESULTDIR}/output.txt"
+
+    mkdir -p $RESULTDIR
+    pushd $RESULTDIR
+    
+    echo "${s} nodes"
+    echo "Results directory: ${RESULTDIR}"
+    echo "Output file: ${OUTFILE}"
+    echo
+    OMP_NUM_THREADS=16 aprun -n $s -N 1 "${EXE}" --gridsize=128 --cfl=0.1 | tee "${OUTFILE}"
+    echo
+    echo
+    echo "---------------------------------------------------------------------"
+
+    popd 2> /dev/null
+done
+
