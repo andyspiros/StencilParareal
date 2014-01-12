@@ -24,24 +24,23 @@ else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS} ")
 endif()
 
-# Stencil library
-set (STENCIL_LIBRARY_SRC_PATH "" CACHE PATH
-    "Source directory of the stencil library"
+# STELLA
+set (STELLA_PATH "" CACHE PATH
+    "Directory where STELLA is stored"
     )
-set (STENCIL_LIBRARY_BUILD_PATH "" CACHE PATH
-    "Build directory of the stencil library"
-    )
+set (STELLA_SRC_PATH "${STELLA_PATH}/src" )
+set (STELLA_BUILD_PATH "${STELLA_PATH}/build" )
 include_directories (
-    "${STENCIL_LIBRARY_SRC_PATH}/shared_definitions"
-    "${STENCIL_LIBRARY_SRC_PATH}/shared_infrastructure"
-    "${STENCIL_LIBRARY_SRC_PATH}/stencil_framework"
+    "${STELLA_SRC_PATH}/shared_definitions"
+    "${STELLA_SRC_PATH}/shared_infrastructure"
+    "${STELLA_SRC_PATH}/stencil_framework"
     )
 set (SHARED_INFRASTRUCTURE_LIB
-    "${STENCIL_LIBRARY_BUILD_PATH}/src/shared_infrastructure/libSharedInfrastructure.a"
+    "${STELLA_BUILD_PATH}/src/shared_infrastructure/libSharedInfrastructure.a"
     )
 
 # GCL
-set (GCL_PATH "${STENCIL_LIBRARY_SRC_PATH}/../libs/gcl")
+set (GCL_PATH "${STELLA_PATH}/libs/gcl")
 set(USE_MPI_COMPILER "OFF" CACHE BOOL "On CSCS machines turn this flag off since compiler takes care of mpi already" )
 find_package(MPI REQUIRED)
 add_definitions ("-D_GCL_MPI_" "-D__GCL__")
