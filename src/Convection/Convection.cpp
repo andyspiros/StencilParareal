@@ -1,12 +1,12 @@
 #include <iostream>
 #include <cmath>
 #include "MatFile.h"
-#include "Convection.h"
 #include "SharedInfrastructure.h"
 #include "StencilFramework.h"
 #include "mpi.h"
 
-const double pi = 3.14159265358979;
+#include "Convection.h"
+#include "ConvectionFunctions.h"
 
 enum
 {
@@ -37,51 +37,12 @@ namespace ConvectionStages
         static void Do(Context ctx, FullDomain)
         {
             // Compute advection
-            T dq_di = 
-                -1. * ctx[qrhs::At(Offset<-2, 0, 0>())]
-                +8. * ctx[qrhs::At(Offset<-1, 0, 0>())]
-                -8. * ctx[qrhs::At(Offset< 1, 0, 0>())]
-                +1. * ctx[qrhs::At(Offset< 2, 0, 0>())];
-            T dq_dj = 
-                -1. * ctx[qrhs::At(Offset< 0, -2, 0>())]
-                +8. * ctx[qrhs::At(Offset< 0, -1, 0>())]
-                -8. * ctx[qrhs::At(Offset< 0,  1, 0>())]
-                +1. * ctx[qrhs::At(Offset< 0,  2, 0>())];
-            T dq_dk = 
-                -1. * ctx[qrhs::At(Offset< 0, 0, -2>())]
-                +8. * ctx[qrhs::At(Offset< 0, 0, -1>())]
-                -8. * ctx[qrhs::At(Offset< 0, 0,  1>())]
-                +1. * ctx[qrhs::At(Offset< 0, 0,  2>())];
-            T tensdiv = 
-              (
-                    ctx[cx::Center()] * dq_di
-                  + ctx[cy::Center()] * dq_dj 
-                  + ctx[cz::Center()] * dq_dk
-              ) / (12. * ctx[dx::Center()]);
+            T tensadv = ctx[Call<Advection>::With(qrhs::Center(), dx::Center(), cx::Center(), cy::Center(), cz::Center())];
             
             // Compute laplacian
-            T d2q_di2 =
-                - 1. * ctx[qrhs::At(Offset<-2, 0, 0>())]
-                +16. * ctx[qrhs::At(Offset<-1, 0, 0>())]
-                -30. * ctx[qrhs::At(Offset< 0, 0, 0>())]
-                +16. * ctx[qrhs::At(Offset< 1, 0, 0>())]
-                - 1. * ctx[qrhs::At(Offset< 2, 0, 0>())];
-            T d2q_dj2 =
-                - 1. * ctx[qrhs::At(Offset< 0, -2, 0>())]
-                +16. * ctx[qrhs::At(Offset< 0, -1, 0>())]
-                -30. * ctx[qrhs::At(Offset< 0,  0, 0>())]
-                +16. * ctx[qrhs::At(Offset< 0,  1, 0>())]
-                - 1. * ctx[qrhs::At(Offset< 0,  2, 0>())];
-            T d2q_dk2 =
-                - 1. * ctx[qrhs::At(Offset< 0, 0, -2>())]
-                +16. * ctx[qrhs::At(Offset< 0, 0, -1>())]
-                -30. * ctx[qrhs::At(Offset< 0, 0,  0>())]
-                +16. * ctx[qrhs::At(Offset< 0, 0,  1>())]
-                - 1. * ctx[qrhs::At(Offset< 0, 0,  2>())];
-            T tenslapl = ctx[nu::Center()] * (d2q_di2 + d2q_dj2 + d2q_dk2);
-            tenslapl /= 12. * ctx[dx2::Center()];
+            T tenslapl = ctx[nu::Center()] * ctx[Call<Laplace>::With(qrhs::Center(), dx2::Center())];
 
-            ctx[k::Center()] = tensdiv + tenslapl;
+            ctx[k::Center()] = tensadv + tenslapl;
         }
     };
 
