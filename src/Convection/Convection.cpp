@@ -309,16 +309,24 @@ Convection::~Convection()
 
 void Convection::DoTimeStep()
 {
+    static int ts = 0;
+    ++ts;
+
     heQ_.exchange();
+    matq.addField(q_, ts);
     stencil1_->Apply();
+    matk1.addField(k1_, ts);
 
     heQinternal_.exchange();
     stencil2_->Apply();
+    matk2.addField(k2_, ts);
 
     heQinternal_.exchange();
     stencil3_->Apply();
+    matk3.addField(k3_, ts);
 
     heQinternal_.exchange();
     stencil4_->Apply();
+    matk4.addField(k4_, ts);
 }
 
