@@ -69,19 +69,19 @@ if ("${USE_4TH_ORDER_LAPLACE}")
     add_definitions("-DFIVE_POINT_STENCIL")
 endif("${USE_4TH_ORDER_LAPLACE}")
 
-# Create executable heat
-set (HEATSOURCES
-    "src/Heat/main.cpp"
-    "src/Heat/MatFile.cpp"
-)
-
-if (${CUDA_BACKEND})
-    cuda_add_executable (heat ${HEATSOURCES} "src/Heat/Heat.cu")
-else()
-    add_executable (heat ${HEATSOURCES} "src/Heat/Heat.cpp")
-endif()
-
-target_link_libraries (heat gcl "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
+## Create executable heat
+#set (HEATSOURCES
+#    "src/Heat/main.cpp"
+#    "src/Heat/MatFile.cpp"
+#)
+#
+#if (${CUDA_BACKEND})
+#    cuda_add_executable (heat ${HEATSOURCES} "src/Heat/Heat.cu")
+#else()
+#    add_executable (heat ${HEATSOURCES} "src/Heat/Heat.cpp")
+#endif()
+#
+#target_link_libraries (heat gcl "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
 
 
 # Create executable convection

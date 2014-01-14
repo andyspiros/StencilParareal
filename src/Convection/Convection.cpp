@@ -10,9 +10,10 @@
 
 enum
 {
-    nu, cx, cy, cz, dx, dx2, dt,
+    nu, cx, cy, cz,
+    dx, dx2, dt, dteuler,
     k, k1, k2, k3, k4,
-    qmain, qrhs, qtemp
+    q, qeuler, qrhs
 };
 
 
@@ -36,13 +37,24 @@ namespace ConvectionStages
         __ACC__
         static void Do(Context ctx, FullDomain)
         {
-            // Compute advection
-            T tensadv = ctx[Call<Advection>::With(qrhs::Center(), dx::Center(), cx::Center(), cy::Center(), cz::Center())];
-            
-            // Compute laplacian
-            T tenslapl = ctx[nu::Center()] * ctx[Call<Laplace>::With(qrhs::Center(), dx2::Center())];
+            ctx[k::Center()] = 
 
-            ctx[k::Center()] = tensadv + tenslapl;
+                // Compute advection
+                ctx[Call<Advection>::With(
+                        qrhs::Center(),
+                        dx::Center(),
+                        cx::Center(),
+                        cy::Center(),
+                        cz::Center()
+                    )]
+
+                +
+                
+                // Compute laplacian
+                ctx[nu::Center()] * ctx[Call<Laplace>::With(
+                        qrhs::Center(),
+                        dx2::Center()
+                )];
         }
     };
 
@@ -51,26 +63,27 @@ namespace ConvectionStages
     {
         STENCIL_STAGE(TEnv)
 
-        STAGE_PARAMETER(FullDomain, qmain)
-        STAGE_PARAMETER(FullDomain, qtemp)
+        STAGE_PARAMETER(FullDomain, q)
+        STAGE_PARAMETER(FullDomain, qeuler)
         STAGE_PARAMETER(FullDomain, k)
-        STAGE_PARAMETER(FullDomain, dt)
+        STAGE_PARAMETER(FullDomain, dteuler)
 
         __ACC__
         static void Do(Context ctx, FullDomain)
         {
-            const T dt_ = ctx[dt::Center()];
-            ctx[qtemp::Center()] = ctx[qmain::Center()]
-                                 + dt_*ctx[k::Center()];
+            ctx[qeuler::Center()] =
+                  ctx[q::Center()]
+                + ctx[dteuler::Center()]*ctx[k::Center()];
         }
     };
+
 
     template<typename TEnv>
     struct RKStage
     {
         STENCIL_STAGE(TEnv)
 
-        STAGE_PARAMETER(FullDomain, qmain)
+        STAGE_PARAMETER(FullDomain, q)
         STAGE_PARAMETER(FullDomain, k1)
         STAGE_PARAMETER(FullDomain, k2)
         STAGE_PARAMETER(FullDomain, k3)
@@ -80,7 +93,7 @@ namespace ConvectionStages
         __ACC__
         static void Do(Context ctx, FullDomain)
         {
-            ctx[qmain::Center()] = ctx[qmain::Center()] + ctx[dt::Center()]/6. *
+            ctx[q::Center()] = ctx[q::Center()] + ctx[dt::Center()]/6. *
                 (
                          ctx[k1::Center()]
                    + 2.* ctx[k2::Center()]
@@ -92,14 +105,16 @@ namespace ConvectionStages
 
 }
 
-Convection::Convection(IJKRealField& data,
+Convection::Convection(ConvectionRealField& data,
                        Real nucoeff, Real cxcoeff, Real cycoeff, Real czcoeff,
                        Real stepsize, Real timestepsize, MPI_Comm comm)
-    : qs_(data), ks_(data)
+    : q_(data)
     , nu_(nucoeff), cx_(cxcoeff), cy_(cycoeff), cz_(czcoeff)
     , dx_(stepsize), dx2_(stepsize*stepsize)
     , dt_(timestepsize), dthalf_(.5 * timestepsize)
-    , he_(true, true, true, comm)
+    , heQ_(true, true, true, comm)
+    , heQinternal_(true, true, true, comm)
+    , matq("q.mat"), matk1("k1.mat"), matk2("k2.mat"), matk3("k3.mat"), matk4("k4.mat")
 {
 #ifdef __CUDA_BACKEND__
     typedef BlockSize<32, 4> BSize;
@@ -109,21 +124,48 @@ Convection::Convection(IJKRealField& data,
 
     using namespace ConvectionStages;
 
-    rhsStencil_ = new Stencil;
-    eulerStencil_ = new Stencil;
-    rkStencil_ = new Stencil;
+    stencil1_ = new Stencil;
+    stencil2_ = new Stencil;
+    stencil3_ = new Stencil;
+    stencil4_ = new Stencil;
+    
+    IJKBoundary inputBoundary = data.boundary();
+    assert(inputBoundary.iMinusOffset() == -2);
+    assert(inputBoundary.iPlusOffset() == 2);
+    assert(inputBoundary.jMinusOffset() == -2);
+    assert(inputBoundary.jPlusOffset() == 2);
+    assert(inputBoundary.kMinusOffset() == -2);
+    assert(inputBoundary.kPlusOffset() == 2);
 
     IJKSize calculationDomain = data.calculationDomain();
+    KBoundary kboundary;
+    kboundary.Init(-convectionBoundaryLines, convectionBoundaryLines);
+
+    // Initialize temporary fields
+    qinternal_.Init("qinternal", calculationDomain, kboundary);
+    k1_.Init("k1", calculationDomain, kboundary);
+    k2_.Init("k2", calculationDomain, kboundary);
+    k3_.Init("k3", calculationDomain, kboundary);
+    k4_.Init("k4", calculationDomain, kboundary);
+
+    // Initialize joker fields
+    //qtmp_.Init("qtmp", q_);
+    //k_.Init("k", k1_);
+
     StencilCompiler::Build(
-        *rhsStencil_,
-        "RightHandSide",
+        *stencil1_,
+        "Convection1",
         calculationDomain,
         StencilConfiguration<Real, BSize>(),
         pack_parameters(
-            // Input fields
-            Param<qrhs, cIn>(qs_.qrhs()),
-            // Output fields
-            Param<k, cInOut>(ks_.k()),
+            // Main field
+            Param<q, cIn>(q_),
+            Param<qrhs, cIn>(q_),
+            Param<qeuler, cInOut>(qinternal_),
+
+            // k fields
+            Param<k, cInOut>(k1_),
+
             // Scalars
             Param<nu, cScalar>(nu_),
             Param<cx, cScalar>(cx_),
@@ -131,34 +173,12 @@ Convection::Convection(IJKRealField& data,
             Param<cz, cScalar>(cz_),
             Param<dx, cScalar>(dx_),
             Param<dx2, cScalar>(dx2_),
-            Param<dt, cScalar>(dtparam_)
+            Param<dteuler, cScalar>(dthalf_)
         ),
         define_loops(
             define_sweep<cKIncrement>(
                 define_stages(
-                    StencilStage<RHSStage, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >()
-                )
-            )
-        )
-    );
-
-    StencilCompiler::Build(
-        *eulerStencil_,
-        "Euler",
-        calculationDomain,
-        StencilConfiguration<Real, BSize>(),
-        pack_parameters(
-            // Input fields
-            Param<qmain, cIn>(qs_.qmain()),
-            Param<k, cIn>(ks_.k()),
-            // Output fields
-            Param<qtemp, cInOut>(qs_.qtemp()),
-            // Scalars
-            Param<dt, cScalar>(dtparam_)
-        ),
-        define_loops(
-            define_sweep<cKIncrement>(
-                define_stages(
+                    StencilStage<RHSStage, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >(),
                     StencilStage<EulerStage, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >()
                 )
             )
@@ -166,96 +186,139 @@ Convection::Convection(IJKRealField& data,
     );
 
     StencilCompiler::Build(
-        *rkStencil_,
-        "RungeKutta",
+        *stencil2_,
+        "Convection2",
         calculationDomain,
         StencilConfiguration<Real, BSize>(),
         pack_parameters(
-            // Input fields
-            Param<k1, cIn>(ks_.k1()),
-            Param<k2, cIn>(ks_.k2()),
-            Param<k3, cIn>(ks_.k3()),
-            Param<k4, cIn>(ks_.k4()),
-            // Output fields
-            Param<qmain, cInOut>(qs_.qmain()),
+            // Main field
+            Param<q, cIn>(q_),
+            Param<qrhs, cIn>(qinternal_),
+            Param<qeuler, cInOut>(qinternal_),
+
+            // k fields
+            Param<k, cInOut>(k2_),
+
             // Scalars
+            Param<nu, cScalar>(nu_),
+            Param<cx, cScalar>(cx_),
+            Param<cy, cScalar>(cy_),
+            Param<cz, cScalar>(cz_),
+            Param<dx, cScalar>(dx_),
+            Param<dx2, cScalar>(dx2_),
+            Param<dteuler, cScalar>(dthalf_)
+        ),
+        define_loops(
+            define_sweep<cKIncrement>(
+                define_stages(
+                    StencilStage<RHSStage, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >(),
+                    StencilStage<EulerStage, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >()
+                )
+            )
+        )
+    );
+
+    StencilCompiler::Build(
+        *stencil3_,
+        "Convection3",
+        calculationDomain,
+        StencilConfiguration<Real, BSize>(),
+        pack_parameters(
+            // Main field
+            Param<q, cIn>(q_),
+            Param<qrhs, cIn>(qinternal_),
+            Param<qeuler, cInOut>(qinternal_),
+
+            // k fields
+            Param<k, cInOut>(k3_),
+
+            // Scalars
+            Param<nu, cScalar>(nu_),
+            Param<cx, cScalar>(cx_),
+            Param<cy, cScalar>(cy_),
+            Param<cz, cScalar>(cz_),
+            Param<dx, cScalar>(dx_),
+            Param<dx2, cScalar>(dx2_),
+            Param<dteuler, cScalar>(dt_)
+        ),
+        define_loops(
+            define_sweep<cKIncrement>(
+                define_stages(
+                    StencilStage<RHSStage, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >(),
+                    StencilStage<EulerStage, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >()
+                )
+            )
+        )
+    );
+
+    StencilCompiler::Build(
+        *stencil4_,
+        "Convection4",
+        calculationDomain,
+        StencilConfiguration<Real, BSize>(),
+        pack_parameters(
+            // Main field
+            Param<q, cInOut>(q_),
+            Param<qrhs, cInOut>(qinternal_),
+
+            // k fields
+            Param<k, cInOut>(k4_),
+            Param<k1, cIn>(k1_),
+            Param<k2, cIn>(k2_),
+            Param<k3, cIn>(k3_),
+            Param<k4, cIn>(k4_),
+
+            // Scalars
+            Param<nu, cScalar>(nu_),
+            Param<cx, cScalar>(cx_),
+            Param<cy, cScalar>(cy_),
+            Param<cz, cScalar>(cz_),
+            Param<dx, cScalar>(dx_),
+            Param<dx2, cScalar>(dx2_),
             Param<dt, cScalar>(dt_)
         ),
         define_loops(
             define_sweep<cKIncrement>(
                 define_stages(
+                    StencilStage<RHSStage, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >(),
                     StencilStage<RKStage, IJRange<cComplete,0,0,0,0>, KRange<FullDomain,0,0> >()
                 )
             )
         )
     );
 
-    he_.registerField(qs_.qrhs());
+
+    heQ_.registerField(q_);
+    heQinternal_.registerField(qinternal_);
+
+    // MAT files
+    //matq.startCell("q", 32);
+    //matk1.startCell("k1", 32);
+    //matk2.startCell("k2", 32);
+    //matk3.startCell("k3", 32);
+    //matk4.startCell("k4", 32);
 }
 
 Convection::~Convection()
 {
-    delete rhsStencil_;
-    delete eulerStencil_;
-    delete rkStencil_;
+    delete stencil1_;
+    delete stencil2_;
+    delete stencil3_;
+    delete stencil4_;
 }
 
 void Convection::DoTimeStep()
 {
-    double erhs, eeuler, erk, ecomm;
-    DoTimeStep(erhs, eeuler, erk, ecomm);
-}
+    heQ_.exchange();
+    stencil1_->Apply();
 
-void Convection::DoTimeStep(double& erhs, double& eeuler, double& erk, double& ecomm)
-{
-    double e;
-    erhs = 0., eeuler = 0., erk = 0., ecomm = 0.;
-    
-    /* First RK timestep */
-    ks_.set(1);
-    qs_.setRHSMain();
-    e = MPI_Wtime(); he_.exchange(); ecomm += MPI_Wtime() - e;
-    e = MPI_Wtime(); rhsStencil_->Apply(); erhs += MPI_Wtime()-e;
-    // Now: k1 = laplace(qmain)
+    heQinternal_.exchange();
+    stencil2_->Apply();
 
-    /* Second RK timestep */
-    qs_.restore();
-    dtparam_ = dthalf_;
-    e = MPI_Wtime(); eulerStencil_->Apply(); eeuler += MPI_Wtime()-e;
-    // Now: qtemp = qmain + dthalf_*k1
+    heQinternal_.exchange();
+    stencil3_->Apply();
 
-    ks_.set(2);
-    qs_.setRHSTemp();
-    e = MPI_Wtime(); he_.exchange(); ecomm += MPI_Wtime()-e;
-    e = MPI_Wtime(); rhsStencil_->Apply(); erhs += MPI_Wtime()-e;
-    // Now: k2 = laplace(qmain + dthalf_*k1)
-    
-    /* Third RK timestep */
-    qs_.restore();
-    e = MPI_Wtime(); eulerStencil_->Apply(); eeuler += MPI_Wtime()-e;
-    // Now: qtemp = qmain + dthalf_*k2
-
-    ks_.set(3);
-    qs_.setRHSTemp();
-    e = MPI_Wtime(); he_.exchange(); ecomm += MPI_Wtime()-e;
-    e = MPI_Wtime(); rhsStencil_->Apply(); erhs += MPI_Wtime()-e;
-    // Now: k3 = laplace(qmain + dthalf_*k2)
-    
-    /* Fourth RK timestep */
-    qs_.restore();
-    dtparam_ = dt_;
-    e = MPI_Wtime(); eulerStencil_->Apply(); eeuler += MPI_Wtime()-e;
-    // Now: qtemp = qmain + dt_*k3
-
-    ks_.set(4);
-    qs_.setRHSTemp();
-    e = MPI_Wtime(); he_.exchange(); ecomm += MPI_Wtime()-e;
-    e = MPI_Wtime(); rhsStencil_->Apply(); erhs += MPI_Wtime()-e;
-    // Now: k4 = laplace(qmain + dt_*k3)
-
-    /* Final RK stage: put things together */
-    ks_.restore();
-    qs_.restore();
-    e = MPI_Wtime(); rkStencil_->Apply(); erk += MPI_Wtime()-e;
+    heQinternal_.exchange();
+    stencil4_->Apply();
 }
 

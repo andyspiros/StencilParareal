@@ -64,7 +64,8 @@ inline double exactQ(double nu, double cx, double cy, double cz,
     return sin(2.*pi*(x-cx*t))*sin(2.*pi*(y-cy*t))*sin(2.*pi*(z-cz*t)) * exp(-12.*pi*pi*nu*t);
 }
 
-void fillQ(IJKRealField& q,
+template<typename DataFieldType>
+void fillQ(DataFieldType& q,
                 double nu, double cx, double cy, double cz,
                 double t,
                 double xstart, double xend,
@@ -94,7 +95,8 @@ void fillQ(IJKRealField& q,
             }
 }
 
-double computeError(const IJKRealField& q,
+template<typename DataFieldType>
+double computeError(const DataFieldType& q,
                 double nu, double cx, double cy, double cz,
                 double t,
                 double xstart, double xend,
@@ -102,7 +104,7 @@ double computeError(const IJKRealField& q,
                 double zstart, double zend
 ,
                 double& exact_inf, double &error_inf,
-                IJKRealField* errfield=0
+                DataFieldType* errfield=0
             )
 {
     IJKSize domain = q.calculationDomain();
@@ -351,8 +353,8 @@ int main(int argc, char **argv)
     IJKSize calculationDomain;
     calculationDomain.Init(localSizesI[myPI], localSizesJ[myPJ], localSizesK[myPK]);
     KBoundary kboundary;
-    kboundary.Init(-3, 3);
-    IJKRealField q, errfield, exactfield;
+    kboundary.Init(-convectionBoundaryLines, convectionBoundaryLines);
+    ConvectionRealField q, errfield, exactfield;
     q.Init("q", calculationDomain, kboundary);
     errfield.Init("error", calculationDomain, kboundary);
     exactfield.Init("exact", calculationDomain, kboundary);
@@ -371,23 +373,21 @@ int main(int argc, char **argv)
         fnameMat << "convection_" << myPI << "_" << myPJ << "_" << myPK << ".mat";
         mat = new MatFile(fnameMat.str());
         mat->startCell("q", conf.timesteps);
-        mat->addField(q, 0);
+        //mat->addField(q, 0);
     }
 
     // Solve equation
     double e = MPI_Wtime();
-    double erhsTot = 0., eeulerTot = 0., erkTot = 0., ecommTot = 0.;
-    double erhs, eeuler, erk, ecomm;
     for (int t = 1; t <= conf.timesteps; ++t) {
-        convection.DoTimeStep(erhs, eeuler, erk, ecomm);
+        convection.DoTimeStep();
 
-        erhsTot += erhs;
-        eeulerTot += eeuler;
-        erkTot += erk;
-        ecommTot += ecomm;
+        //erhsTot += erhs;
+        //eeulerTot += eeuler;
+        //erkTot += erk;
+        //ecommTot += ecomm;
 
-        if (conf.mat)
-            mat->addField(q, t);
+        //if (conf.mat)
+        //    mat->addField(q, t);
     }
     e = MPI_Wtime() - e;
 
@@ -409,10 +409,10 @@ int main(int argc, char **argv)
     if (isRoot)
     {
         std::cout << "Timing results:\n"
-            << " - right hand side stencil: " << erhsTot * 1000. << " msec\n"
-            << " - euler stencil: " << eeulerTot * 1000. << " msec\n"
-            << " - rk stencil: " << erkTot * 1000. << " msec\n"
-            << " - halo exchange: " << ecommTot * 1000. << " msec\n"
+            //<< " - right hand side stencil: " << erhsTot * 1000. << " msec\n"
+            //<< " - euler stencil: " << eeulerTot * 1000. << " msec\n"
+            //<< " - rk stencil: " << erkTot * 1000. << " msec\n"
+            //<< " - halo exchange: " << ecommTot * 1000. << " msec\n"
             << " - total time: " << e * 1000. << " msec\n"
             << "\n";
 
@@ -436,9 +436,9 @@ int main(int argc, char **argv)
     fnameResult << "result_" << myPI << "_" << myPJ << "_" << myPK << ".mat";
 
     MatFile matfile(fnameResult.str());
-    matfile.addField(q, -1);
-    matfile.addField(errfield, -1);
-    matfile.addField(exactfield, -1);
+    //matfile.addField(q, -1);
+    //matfile.addField(errfield, -1);
+    //matfile.addField(exactfield, -1);
 
     // Finalize GCL
     GCL::GCL_Finalize();
