@@ -379,12 +379,7 @@ int main(int argc, char **argv)
     double erhsTot = 0., eeulerTot = 0., erkTot = 0., ecommTot = 0.;
     double erhs, eeuler, erk, ecomm;
     for (int t = 1; t <= conf.timesteps; ++t) {
-        convection.DoTimeStep(erhs, eeuler, erk, ecomm);
-
-        erhsTot += erhs;
-        eeulerTot += eeuler;
-        erkTot += erk;
-        ecommTot += ecomm;
+        convection.DoTimeStep();
 
         if (conf.mat)
             mat->addField(q, t);

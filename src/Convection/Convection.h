@@ -8,10 +8,12 @@
 
 class Stencil;
 
+typedef IJKRealField ConvectionField;
+
 class Convection
 {
 public:
-    Convection(IJKRealField& q, Real nu, Real cx, Real cy, Real cz, Real dx, Real dt, MPI_Comm comm);
+    Convection(ConvectionField& q, Real nu, Real cx, Real cy, Real cz, Real dx, Real dt, MPI_Comm comm);
     ~Convection();
 
     void DoTimeStep();
@@ -23,14 +25,17 @@ private:
     Real dt_, dthalf_, dtparam_;
 
     // Data fields
-    QField<IJKRealField> qs_;
-    KField<IJKRealField> ks_;
+    ConvectionField& qMain_;
+    ConvectionField qInternal_;
+    ConvectionField k1_, k2_, k3_, k4_;
+
+    JokerDataField<ConvectionField> qrhs_, k_;
 
     // Stencils
     Stencil *rhsStencil_, *eulerStencil_, *rkStencil_;
 
     // HaloExchange
-    HaloExchange3D<IJKRealField> he_;
+    HaloExchange3D<ConvectionField> he1_, he2_, he3_, he4_;
 };
 
 #endif // CONVECTION_H_

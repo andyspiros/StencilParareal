@@ -95,11 +95,14 @@ namespace ConvectionStages
 Convection::Convection(IJKRealField& data,
                        Real nucoeff, Real cxcoeff, Real cycoeff, Real czcoeff,
                        Real stepsize, Real timestepsize, MPI_Comm comm)
-    : qs_(data), ks_(data)
-    , nu_(nucoeff), cx_(cxcoeff), cy_(cycoeff), cz_(czcoeff)
+    : nu_(nucoeff), cx_(cxcoeff), cy_(cycoeff), cz_(czcoeff)
     , dx_(stepsize), dx2_(stepsize*stepsize)
     , dt_(timestepsize), dthalf_(.5 * timestepsize)
-    , he_(true, true, true, comm)
+    , qMain_(data)
+    , he1_(true, true, true, comm)
+    , he2_(true, true, true, comm)
+    , he3_(true, true, true, comm)
+    , he4_(true, true, true, comm)
 {
 #ifdef __CUDA_BACKEND__
     typedef BlockSize<32, 4> BSize;
@@ -112,8 +115,21 @@ Convection::Convection(IJKRealField& data,
     rhsStencil_ = new Stencil;
     eulerStencil_ = new Stencil;
     rkStencil_ = new Stencil;
-
     IJKSize calculationDomain = data.calculationDomain();
+    KBoundary kboundary;
+    kboundary.Init(-3, 3);
+
+    // Initialize internal fields
+    qInternal_.Init("qInternal", calculationDomain, kboundary);
+    k1_.Init("k1", calculationDomain, kboundary);
+    k2_.Init("k2", calculationDomain, kboundary);
+    k3_.Init("k3", calculationDomain, kboundary);
+    k4_.Init("k4", calculationDomain, kboundary);
+
+    // Initialize joker fields
+    qrhs_.Init("qrhs", qInternal_);
+    k_.Init("k", k1_);
+
     StencilCompiler::Build(
         *rhsStencil_,
         "RightHandSide",
@@ -121,9 +137,9 @@ Convection::Convection(IJKRealField& data,
         StencilConfiguration<Real, BSize>(),
         pack_parameters(
             // Input fields
-            Param<qrhs, cIn>(qs_.qrhs()),
+            Param<qrhs, cIn>(qrhs_),
             // Output fields
-            Param<k, cInOut>(ks_.k()),
+            Param<k, cInOut>(k_),
             // Scalars
             Param<nu, cScalar>(nu_),
             Param<cx, cScalar>(cx_),
@@ -149,10 +165,10 @@ Convection::Convection(IJKRealField& data,
         StencilConfiguration<Real, BSize>(),
         pack_parameters(
             // Input fields
-            Param<qmain, cIn>(qs_.qmain()),
-            Param<k, cIn>(ks_.k()),
+            Param<qmain, cIn>(qMain_),
+            Param<k, cIn>(k_),
             // Output fields
-            Param<qtemp, cInOut>(qs_.qtemp()),
+            Param<qtemp, cInOut>(qInternal_),
             // Scalars
             Param<dt, cScalar>(dtparam_)
         ),
@@ -172,12 +188,12 @@ Convection::Convection(IJKRealField& data,
         StencilConfiguration<Real, BSize>(),
         pack_parameters(
             // Input fields
-            Param<k1, cIn>(ks_.k1()),
-            Param<k2, cIn>(ks_.k2()),
-            Param<k3, cIn>(ks_.k3()),
-            Param<k4, cIn>(ks_.k4()),
+            Param<k1, cIn>(k1_),
+            Param<k2, cIn>(k2_),
+            Param<k3, cIn>(k3_),
+            Param<k4, cIn>(k4_),
             // Output fields
-            Param<qmain, cInOut>(qs_.qmain()),
+            Param<qmain, cInOut>(qMain_),
             // Scalars
             Param<dt, cScalar>(dt_)
         ),
@@ -190,7 +206,10 @@ Convection::Convection(IJKRealField& data,
         )
     );
 
-    he_.registerField(qs_.qrhs());
+    he1_.registerField(qMain_);
+    he2_.registerField(qInternal_);
+    he3_.registerField(k3_);
+    he4_.registerField(k4_);
 }
 
 Convection::~Convection()
@@ -202,60 +221,40 @@ Convection::~Convection()
 
 void Convection::DoTimeStep()
 {
-    double erhs, eeuler, erk, ecomm;
-    DoTimeStep(erhs, eeuler, erk, ecomm);
-}
-
-void Convection::DoTimeStep(double& erhs, double& eeuler, double& erk, double& ecomm)
-{
-    double e;
-    erhs = 0., eeuler = 0., erk = 0., ecomm = 0.;
-    
     /* First RK timestep */
-    ks_.set(1);
-    qs_.setRHSMain();
-    e = MPI_Wtime(); he_.exchange(); ecomm += MPI_Wtime() - e;
-    e = MPI_Wtime(); rhsStencil_->Apply(); erhs += MPI_Wtime()-e;
-    // Now: k1 = laplace(qmain)
+    qrhs_.set_dataField(qMain_);
+    k_.set_dataField(k1_);
+    he1_.exchange();
+    rhsStencil_->Apply();
 
     /* Second RK timestep */
-    qs_.restore();
     dtparam_ = dthalf_;
-    e = MPI_Wtime(); eulerStencil_->Apply(); eeuler += MPI_Wtime()-e;
-    // Now: qtemp = qmain + dthalf_*k1
+    eulerStencil_->Apply();
 
-    ks_.set(2);
-    qs_.setRHSTemp();
-    e = MPI_Wtime(); he_.exchange(); ecomm += MPI_Wtime()-e;
-    e = MPI_Wtime(); rhsStencil_->Apply(); erhs += MPI_Wtime()-e;
-    // Now: k2 = laplace(qmain + dthalf_*k1)
+    k_.set_dataField(k2_);
+    qrhs_.set_dataField(qInternal_);
+    he2_.exchange();
+    rhsStencil_->Apply();
     
     /* Third RK timestep */
-    qs_.restore();
-    e = MPI_Wtime(); eulerStencil_->Apply(); eeuler += MPI_Wtime()-e;
-    // Now: qtemp = qmain + dthalf_*k2
+    dtparam_ = dthalf_;
+    eulerStencil_->Apply();
 
-    ks_.set(3);
-    qs_.setRHSTemp();
-    e = MPI_Wtime(); he_.exchange(); ecomm += MPI_Wtime()-e;
-    e = MPI_Wtime(); rhsStencil_->Apply(); erhs += MPI_Wtime()-e;
-    // Now: k3 = laplace(qmain + dthalf_*k2)
+    k_.set_dataField(k3_);
+    qrhs_.set_dataField(qInternal_);
+    he2_.exchange();
+    rhsStencil_->Apply();
     
     /* Fourth RK timestep */
-    qs_.restore();
     dtparam_ = dt_;
-    e = MPI_Wtime(); eulerStencil_->Apply(); eeuler += MPI_Wtime()-e;
-    // Now: qtemp = qmain + dt_*k3
+    eulerStencil_->Apply();
 
-    ks_.set(4);
-    qs_.setRHSTemp();
-    e = MPI_Wtime(); he_.exchange(); ecomm += MPI_Wtime()-e;
-    e = MPI_Wtime(); rhsStencil_->Apply(); erhs += MPI_Wtime()-e;
-    // Now: k4 = laplace(qmain + dt_*k3)
+    k_.set_dataField(k4_);
+    qrhs_.set_dataField(qInternal_);
+    he2_.exchange();
+    rhsStencil_->Apply();
 
     /* Final RK stage: put things together */
-    ks_.restore();
-    qs_.restore();
-    e = MPI_Wtime(); rkStencil_->Apply(); erk += MPI_Wtime()-e;
+    rkStencil_->Apply();
 }
 
