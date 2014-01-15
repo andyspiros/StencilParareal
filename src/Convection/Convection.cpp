@@ -92,7 +92,7 @@ namespace ConvectionStages
 
 }
 
-Convection::Convection(IJKRealField& data,
+Convection::Convection(ConvectionField& data,
                        Real nucoeff, Real cxcoeff, Real cycoeff, Real czcoeff,
                        Real stepsize, Real timestepsize, MPI_Comm comm)
     : nu_(nucoeff), cx_(cxcoeff), cy_(cycoeff), cz_(czcoeff)
@@ -101,8 +101,6 @@ Convection::Convection(IJKRealField& data,
     , qMain_(data)
     , he1_(true, true, true, comm)
     , he2_(true, true, true, comm)
-    , he3_(true, true, true, comm)
-    , he4_(true, true, true, comm)
 {
 #ifdef __CUDA_BACKEND__
     typedef BlockSize<32, 4> BSize;
@@ -112,12 +110,27 @@ Convection::Convection(IJKRealField& data,
 
     using namespace ConvectionStages;
 
+    // Check that input field has correct boundary
+    IJKBoundary boundary = data.boundary();
+    if (
+               boundary.iMinusOffset() != -convectionBoundaryLines
+            || boundary. iPlusOffset() !=  convectionBoundaryLines
+            || boundary.jMinusOffset() != -convectionBoundaryLines
+            || boundary. jPlusOffset() !=  convectionBoundaryLines
+            || boundary.kMinusOffset() != -convectionBoundaryLines
+            || boundary. kPlusOffset() !=  convectionBoundaryLines
+        )
+    {
+        std::cerr << "Error in convection: given field has incorrect boundaries\n";
+        std::exit(3);
+    }
+
     rhsStencil_ = new Stencil;
     eulerStencil_ = new Stencil;
     rkStencil_ = new Stencil;
     IJKSize calculationDomain = data.calculationDomain();
     KBoundary kboundary;
-    kboundary.Init(-3, 3);
+    kboundary.Init(-convectionBoundaryLines, convectionBoundaryLines);
 
     // Initialize internal fields
     qInternal_.Init("qInternal", calculationDomain, kboundary);
@@ -208,8 +221,6 @@ Convection::Convection(IJKRealField& data,
 
     he1_.registerField(qMain_);
     he2_.registerField(qInternal_);
-    he3_.registerField(k3_);
-    he4_.registerField(k4_);
 }
 
 Convection::~Convection()

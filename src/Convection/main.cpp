@@ -64,7 +64,7 @@ inline double exactQ(double nu, double cx, double cy, double cz,
     return sin(2.*pi*(x-cx*t))*sin(2.*pi*(y-cy*t))*sin(2.*pi*(z-cz*t)) * exp(-12.*pi*pi*nu*t);
 }
 
-void fillQ(IJKRealField& q,
+void fillQ(ConvectionField& q,
                 double nu, double cx, double cy, double cz,
                 double t,
                 double xstart, double xend,
@@ -94,7 +94,8 @@ void fillQ(IJKRealField& q,
             }
 }
 
-double computeError(const IJKRealField& q,
+template<typename TDataField>
+double computeError(const TDataField& q,
                 double nu, double cx, double cy, double cz,
                 double t,
                 double xstart, double xend,
@@ -102,7 +103,7 @@ double computeError(const IJKRealField& q,
                 double zstart, double zend
 ,
                 double& exact_inf, double &error_inf,
-                IJKRealField* errfield=0
+                TDataField* errfield=0
             )
 {
     IJKSize domain = q.calculationDomain();
@@ -351,8 +352,8 @@ int main(int argc, char **argv)
     IJKSize calculationDomain;
     calculationDomain.Init(localSizesI[myPI], localSizesJ[myPJ], localSizesK[myPK]);
     KBoundary kboundary;
-    kboundary.Init(-3, 3);
-    IJKRealField q, errfield, exactfield;
+    kboundary.Init(-convectionBoundaryLines, convectionBoundaryLines);
+    ConvectionField q, errfield, exactfield;
     q.Init("q", calculationDomain, kboundary);
     errfield.Init("error", calculationDomain, kboundary);
     exactfield.Init("exact", calculationDomain, kboundary);

@@ -8,7 +8,15 @@
 
 class Stencil;
 
-typedef IJKRealField ConvectionField;
+// Define data field
+static const int convectionBoundaryLines = 2;
+typedef DataFieldIJBoundary<-convectionBoundaryLines, convectionBoundaryLines, -convectionBoundaryLines, convectionBoundaryLines> ConvectionIJBoundary;
+
+#ifdef CUDA_BACKEND
+typedef DataFieldCUDA<Real, DataFieldStorageFormat<ConvectionIJBoundary, StorageOrder::KJI, CUDARealAlignment> > ConvectionField;
+#else
+typedef DataFieldOpenMP<Real, DataFieldStorageFormat<ConvectionIJBoundary, StorageOrder::KJI, OpenMPAlignment> > ConvectionField;
+#endif
 
 class Convection
 {
@@ -35,7 +43,8 @@ private:
     Stencil *rhsStencil_, *eulerStencil_, *rkStencil_;
 
     // HaloExchange
-    HaloExchange3D<ConvectionField> he1_, he2_, he3_, he4_;
+    HaloExchange3D<ConvectionField> he1_, he2_;
 };
 
 #endif // CONVECTION_H_
+
