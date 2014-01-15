@@ -362,7 +362,11 @@ int main(int argc, char **argv)
     fillQ(q, conf.nu, conf.cx, conf.cy, conf.cz, 0., xstart, xend, ystart, yend, zstart, zend);
 
     // Initialize stencil
-    Convection convection(q, conf.nu, conf.cx, conf.cy, conf.cz, conf.dx, conf.dt, comm);
+    Convection convection(localSizesI[myPI], localSizesJ[myPJ], localSizesK[myPK], conf.dx, conf.nu, conf.cx, conf.cy, conf.cz, comm);
+
+    // Initialize halo exchange
+    ConvectionHaloExchange qHE(true, true, true, comm);
+    qHE.registerField(q);
 
     // Initialize MAT file
     MatFile *mat;
@@ -380,7 +384,7 @@ int main(int argc, char **argv)
     double erhsTot = 0., eeulerTot = 0., erkTot = 0., ecommTot = 0.;
     double erhs, eeuler, erk, ecomm;
     for (int t = 1; t <= conf.timesteps; ++t) {
-        convection.DoTimeStep();
+        convection.DoRK4Timestep(q, q, conf.dt, qHE);
 
         if (conf.mat)
             mat->addField(q, t);
