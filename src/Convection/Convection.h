@@ -44,10 +44,35 @@ public:
                  double dt, double tstart, double tend);
 
     /**
+     * Performs Euler timesteps
+     *
+     * Performs the integration of the equation from tstart to tend with
+     * the given timestep size dt.  The input field is preserved and the result
+     * is stored into the given output field.
+     *
+     * \param inputField The field whence the condition at tstart is read
+     * \param outputField The field where the solution at ttend is written
+     * \param dt The timestep size
+     * \param tstart The initial time
+     * \param tend The end time
+     *
+     * \return The actual end time ttend is returned.  This is the first number
+     *         ttend = min(tstart + k * dt),  for integer k
+     */
+    double DoEuler(ConvectionField& inputField, ConvectionField& outputField,
+                   double dt, double tstart, double tend);
+
+    /**
      * Performs a single RK4 timestep
      */
     void DoRK4Timestep(ConvectionField& inputField, ConvectionField& outputField,
                        double dt, ConvectionHaloExchange& inputHE);
+    /**
+     * Performs a single Euler timestep
+     */
+    void DoEulerTimestep(ConvectionField& inputField, ConvectionField& outputField,
+                         double dt, ConvectionHaloExchange& inputHE);
+
 
 private:
     typedef JokerDataField<ConvectionField> JokerField; 
@@ -71,10 +96,11 @@ private:
     JokerField k_;
 
     // Stencils
-    Stencil *rhsStencil_, *eulerStencil_, *rkStencil_;
+    Stencil *rhs2Stencil_, *rhs4Stencil_, *eulerStencil_, *rkStencil_;
 
     // HaloExchange
     ConvectionHaloExchange internalHE_;
 };
 
 #endif // CONVECTION_H
+

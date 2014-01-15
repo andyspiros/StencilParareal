@@ -156,6 +156,7 @@ struct HeatConfiguration
     double dx;
     double dt;
     bool mat;
+    bool rk;
 };
 
 HeatConfiguration parseCommandLine(int argc, char **argv)
@@ -184,6 +185,7 @@ HeatConfiguration parseCommandLine(int argc, char **argv)
         ("timesteps", po::value<int>(), "Number of timesteps")
         ("endtime", po::value<double>(), "Time to simulate")
         ("cfl", po::value<double>(), "Fixed CFL condition")
+        ("order", po::value<int>(), "Order of timestepping (valid values are 1 and 4)")
         ("mat", "Output intermediate states")
         ;
 
@@ -198,6 +200,22 @@ HeatConfiguration parseCommandLine(int argc, char **argv)
     }
 
     conf.mat = vm.count("mat");
+
+    if (vm.count("order"))
+    {
+        if (vm["order"].as<int>() == 1)
+            conf.rk = false;
+        else if (vm["order"].as<int>() == 4)
+            conf.rk = true;
+        else
+        {
+            std::cerr << "Order " << vm["order"].as<int>()<< " is not supported\n";
+            std::cerr << "Aborting.\n";
+            std::exit(-1);
+        }
+    }
+    else
+        conf.rk = true;
 
     if (vm.count("nu"))
     {
@@ -329,6 +347,7 @@ int main(int argc, char **argv)
             << " - advection velocity in y: " << conf.cy << "\n"
             << " - advection velocity in z: " << conf.cz << "\n"
             << " - CFL: " << conf.cfl << "\n"
+            << " - solver: " << (conf.rk ? "Runge-Kutta 4" : "explicit Euler") << "\n"
             << "\n";
 
         std::cout << "Spatial configuration:\n";
@@ -353,20 +372,17 @@ int main(int argc, char **argv)
     calculationDomain.Init(localSizesI[myPI], localSizesJ[myPJ], localSizesK[myPK]);
     KBoundary kboundary;
     kboundary.Init(-convectionBoundaryLines, convectionBoundaryLines);
-    ConvectionField q, errfield, exactfield;
-    q.Init("q", calculationDomain, kboundary);
+    ConvectionField qIn, qOut, errfield, exactfield;
+    qIn.Init("q", calculationDomain, kboundary);
+    qOut.Init("q", calculationDomain, kboundary);
     errfield.Init("error", calculationDomain, kboundary);
     exactfield.Init("exact", calculationDomain, kboundary);
 
     // Initialize content of q
-    fillQ(q, conf.nu, conf.cx, conf.cy, conf.cz, 0., xstart, xend, ystart, yend, zstart, zend);
+    fillQ(qIn, conf.nu, conf.cx, conf.cy, conf.cz, 0., xstart, xend, ystart, yend, zstart, zend);
 
     // Initialize stencil
     Convection convection(localSizesI[myPI], localSizesJ[myPJ], localSizesK[myPK], conf.dx, conf.nu, conf.cx, conf.cy, conf.cz, comm);
-
-    // Initialize halo exchange
-    ConvectionHaloExchange qHE(true, true, true, comm);
-    qHE.registerField(q);
 
     // Initialize MAT file
     MatFile *mat;
@@ -376,19 +392,28 @@ int main(int argc, char **argv)
         fnameMat << "convection_" << myPI << "_" << myPJ << "_" << myPK << ".mat";
         mat = new MatFile(fnameMat.str());
         mat->startCell("q", conf.timesteps);
-        mat->addField(q, 0);
+        mat->addField(qIn, 0);
     }
 
     // Solve equation
-    double e = MPI_Wtime();
-    double erhsTot = 0., eeulerTot = 0., erkTot = 0., ecommTot = 0.;
-    double erhs, eeuler, erk, ecomm;
-    for (int t = 1; t <= conf.timesteps; ++t) {
-        convection.DoRK4Timestep(q, q, conf.dt, qHE);
+    //double e = MPI_Wtime();
+    //double erhsTot = 0., eeulerTot = 0., erkTot = 0., ecommTot = 0.;
+    //double erhs, eeuler, erk, ecomm;
+    //for (int t = 1; t <= conf.timesteps; ++t) {
+    //    if (t == 1)
+    //        convection.DoRK4Timestep(qIn, qOut, conf.dt, qInHE);
+    //    else
+    //        convection.DoRK4Timestep(qOut, qOut, conf.dt, qOutHE);
 
-        if (conf.mat)
-            mat->addField(q, t);
-    }
+    //    if (conf.mat)
+    //        mat->addField(qIn, t);
+    //}
+    //e = MPI_Wtime() - e;
+    double e = MPI_Wtime();
+    if (conf.rk)
+        convection.DoRK4(qIn, qOut, conf.dt, 0., conf.endtime);
+    else
+        convection.DoEuler(qIn, qOut, conf.dt, 0., conf.endtime);
     e = MPI_Wtime() - e;
 
     // Close MAT file
@@ -400,7 +425,7 @@ int main(int argc, char **argv)
 
     // Compute error
     double infAtEnd[2];
-    double errorAtEnd = computeError(q, conf.nu, conf.cx, conf.cy, conf.cz, conf.endtime,
+    double errorAtEnd = computeError(qOut, conf.nu, conf.cx, conf.cy, conf.cz, conf.endtime,
                                      xstart, xend, ystart, yend,
                                      zstart, zend, infAtEnd[0], infAtEnd[1], &errfield);
     std::vector<double> infsAtEnd(2*GCL::PROCS);
@@ -409,10 +434,10 @@ int main(int argc, char **argv)
     if (isRoot)
     {
         std::cout << "Timing results:\n"
-            << " - right hand side stencil: " << erhsTot * 1000. << " msec\n"
-            << " - euler stencil: " << eeulerTot * 1000. << " msec\n"
-            << " - rk stencil: " << erkTot * 1000. << " msec\n"
-            << " - halo exchange: " << ecommTot * 1000. << " msec\n"
+            //<< " - right hand side stencil: " << erhsTot * 1000. << " msec\n"
+            //<< " - euler stencil: " << eeulerTot * 1000. << " msec\n"
+            //<< " - rk stencil: " << erkTot * 1000. << " msec\n"
+            //<< " - halo exchange: " << ecommTot * 1000. << " msec\n"
             << " - total time: " << e * 1000. << " msec\n"
             << "\n";
 
@@ -436,7 +461,8 @@ int main(int argc, char **argv)
     fnameResult << "result_" << myPI << "_" << myPJ << "_" << myPK << ".mat";
 
     MatFile matfile(fnameResult.str());
-    matfile.addField(q, -1);
+    matfile.addField(qIn, -1);
+    matfile.addField(qOut, -1);
     matfile.addField(errfield, -1);
     matfile.addField(exactfield, -1);
 
