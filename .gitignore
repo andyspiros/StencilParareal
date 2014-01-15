@@ -19,4 +19,4 @@
 slurm*.out
 
 # Build directory(ies)
-build*
+build*/
