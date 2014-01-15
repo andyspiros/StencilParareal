@@ -167,7 +167,7 @@ HeatConfiguration parseCommandLine(int argc, char **argv)
     conf.cy = 1.;
     conf.cz = 1.;
     conf.gridsize = 32;
-    conf.timesteps = 500;
+    conf.timesteps = 512;
     conf.endtime = 0.05;
     conf.dx = 1. / conf.gridsize;
     conf.dt = conf.endtime / conf.timesteps;

@@ -325,9 +325,9 @@ double Convection::DoEuler(ConvectionField& inputField, ConvectionField& outputF
     if (t < tend)
         DoEulerTimestep(inputField, outputField, dt, inputHE);
 
-    t += dt;
+    t = tstart + dt;
 
-    for (; t < tend; t += dt)
+    for (int i = 1; t < tend; t = tstart + (++i)*dt)
         DoEulerTimestep(outputField, outputField, dt, outputHE);
 
     return t;
