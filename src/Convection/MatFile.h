@@ -15,6 +15,9 @@ public:
     template<typename TDataField>
     void addField(const TDataField& field, int inc = -1);
 
+    template<typename TDataField>
+    void addField(const std::string& fieldName, const TDataField& field);
+
     void close();
 
 private:
@@ -54,14 +57,12 @@ struct MATTraits<double>
 ////////////////////
 
 template<typename TDataField>
-void MatFile::addField(const TDataField& field, int inc)
+void MatFile::addField(const std::string& fieldName, const TDataField& field)
 {
-    std::ostringstream fieldNameStream;
-    if (inc >= 0)
-        fieldNameStream << field.name() << "_" << inc;
-    else
-        fieldNameStream << field.name();
-    std::string fieldName = fieldNameStream.str();
+#ifdef __CUDA_BACKEND__
+    TDataField& nonconstfield = const_cast<TDataField&>(field);
+    nonconstfield.SynchronizeHostStorage();
+#endif
 
     IJKSize size = field.calculationDomain();
     IJKBoundary boundary = field.boundary();
@@ -129,5 +130,22 @@ void MatFile::addField(const TDataField& field, int inc)
                     MATTraits<Real>::size
                     );
             }
+
+#ifdef __CUDA_BACKEND__
+    nonconstfield.SynchronizeDeviceStorage();
+#endif
+}
+
+template<typename TDataField>
+void MatFile::addField(const TDataField& field, int inc)
+{
+    std::ostringstream fieldNameStream;
+    if (inc >= 0)
+        fieldNameStream << field.name() << "_" << inc;
+    else
+        fieldNameStream << field.name();
+    std::string fieldName = fieldNameStream.str();
+
+    addField(fieldName, field);
 }
 

@@ -2,7 +2,6 @@
 #define CONVECTION_H_
 
 #include "SharedInfrastructure.h"
-#include "HaloExchange3D.h"
 
 class Stencil;
 
@@ -10,18 +9,16 @@ class Stencil;
 static const int convectionBoundaryLines = 2;
 typedef DataFieldIJBoundary<-convectionBoundaryLines, convectionBoundaryLines, -convectionBoundaryLines, convectionBoundaryLines> ConvectionIJBoundary;
 
-#ifdef CUDA_BACKEND
+#ifdef __CUDA_BACKEND__
 typedef DataFieldCUDA<Real, DataFieldStorageFormat<ConvectionIJBoundary, StorageOrder::KJI, CUDARealAlignment> > ConvectionField;
 #else
-typedef DataFieldOpenMP<Real, DataFieldStorageFormat<ConvectionIJBoundary, StorageOrder::KJI, OpenMPAlignment> > ConvectionField;
+typedef DataFieldOpenMP<Real, DataFieldStorageFormat<ConvectionIJBoundary, StorageOrder::JIK, OpenMPAlignment> > ConvectionField;
 #endif
-
-typedef HaloExchange3D<ConvectionField> ConvectionHaloExchange;
 
 class Convection
 {
 public:
-    Convection(int isize, int jsize, int ksize, Real dx, Real nu, Real cx, Real cy, Real cz, MPI_Comm comm);
+    Convection(int isize, int jsize, int ksize, Real dx, Real nu, Real cx, Real cy, Real cz);
     ~Convection();
 
     /**
@@ -41,7 +38,7 @@ public:
      *         ttend = min(tstart + k * dt),  for integer k
      */
     double DoRK4(ConvectionField& inputField, ConvectionField& outputField,
-                 double dt, double tstart, double tend);
+                 double dt, unsigned timesteps);
 
     /**
      * Performs Euler timesteps
@@ -60,18 +57,18 @@ public:
      *         ttend = min(tstart + k * dt),  for integer k
      */
     double DoEuler(ConvectionField& inputField, ConvectionField& outputField,
-                   double dt, double tstart, double tend);
+                   double dt, unsigned timesteps);
 
     /**
      * Performs a single RK4 timestep
      */
     void DoRK4Timestep(ConvectionField& inputField, ConvectionField& outputField,
-                       double dt, ConvectionHaloExchange& inputHE);
+                       double dt);
     /**
      * Performs a single Euler timestep
      */
     void DoEulerTimestep(ConvectionField& inputField, ConvectionField& outputField,
-                         double dt, ConvectionHaloExchange& inputHE);
+                         double dt);
 
 
 private:
@@ -79,9 +76,6 @@ private:
 
     void InitializeStencils(const IJKSize& domain);
 
-    // MPI-related vars
-    MPI_Comm comm_;
-    
     // Scalars
     Real nu_, cx_, cy_, cz_, dx_, dx2_;
     Real dtparam_;
@@ -97,9 +91,6 @@ private:
 
     // Stencils
     Stencil *rhs2Stencil_, *rhs4Stencil_, *eulerStencil_, *rkStencil_;
-
-    // HaloExchange
-    ConvectionHaloExchange internalHE_;
 };
 
 #endif // CONVECTION_H

@@ -380,9 +380,14 @@ int main(int argc, char **argv)
 
     // Initialize content of q
     fillQ(qIn, conf.nu, conf.cx, conf.cy, conf.cz, 0., xstart, xend, ystart, yend, zstart, zend);
+    qIn.SynchronizeDeviceStorage();
+    qOut.SynchronizeDeviceStorage();
+    MatFile initmat("init.mat");
+    initmat.addField("qIn", qIn);
+    initmat.close();
 
     // Initialize stencil
-    Convection convection(localSizesI[myPI], localSizesJ[myPJ], localSizesK[myPK], conf.dx, conf.nu, conf.cx, conf.cy, conf.cz, comm);
+    Convection convection(localSizesI[myPI], localSizesJ[myPJ], localSizesK[myPK], conf.dx, conf.nu, conf.cx, conf.cy, conf.cz);
 
     // Initialize MAT file
     MatFile *mat;
@@ -411,9 +416,9 @@ int main(int argc, char **argv)
     //e = MPI_Wtime() - e;
     double e = MPI_Wtime();
     if (conf.rk)
-        convection.DoRK4(qIn, qOut, conf.dt, 0., conf.endtime);
+        convection.DoRK4(qIn, qOut, conf.dt, conf.timesteps);
     else
-        convection.DoEuler(qIn, qOut, conf.dt, 0., conf.endtime);
+        convection.DoEuler(qIn, qOut, conf.dt, conf.timesteps);
     e = MPI_Wtime() - e;
 
     // Close MAT file
