@@ -303,11 +303,11 @@ double Convection::DoEuler(ConvectionField& inputField, ConvectionField& outputF
                        double dt, unsigned timesteps)
 {
     // First timestep, read from input, write into output
-    if (timesteps)
+    if (timesteps > 0)
         DoEulerTimestep(inputField, outputField, dt);
 
     // All other timesteps
-    for (--timesteps; timesteps; --timesteps)
+    for (--timesteps; timesteps > 0; --timesteps)
         DoEulerTimestep(outputField, outputField, dt);
 
     return 0.;

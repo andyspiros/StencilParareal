@@ -7,6 +7,7 @@
 
 class RuntimeConfiguration
 {
+public:
     RuntimeConfiguration(int argc, char **argv);
 
     // Getters
@@ -18,18 +19,18 @@ class RuntimeConfiguration
     double endTime() const { return endTime_; }
     double cflFine() const { return cflFine_; }
     double cflCoarse() const { return cflCoarse_; }
-    int timeSlices() const { return timeSlices_; }
+    double kmax() const { return kmax_; }
 
     // Setters
     void set_nu(double x) { nu_ = x; }
     void set_cx(double x) { cx_ = x; }
     void set_cy(double x) { cy_ = x; }
     void set_cz(double x) { cz_ = x; }
-    void set_gridSize(int x) { cgridSize_ = x; }
+    void set_gridSize(int x) { gridSize_ = x; }
     void set_endTime(double x) { endTime_ = x; }
     void set_cflFine(double x) { cflFine_ = x; }
     void set_cflCoarse(double x) { cflCoarse_ = x; }
-    void set_timeSlices(int x) { timeSlices_ = x; }
+    void set_kmax(int x) { kmax_ = x; }
 
 
     // Non-stored info
@@ -66,7 +67,7 @@ private:
     int gridSize_;
     double endTime_;
     double cflFine_, cflCoarse_;
-    int timeSlices_;
+    int kmax_;
 };
 
 #endif // RUNTIMECONFIGURATION_H_

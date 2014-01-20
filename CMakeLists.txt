@@ -71,6 +71,8 @@ else()
     add_library(communication "src/Communication/Periodicity.cu")
 endif()
 
+include_directories("src/Convection")
+
 # Stencil for laplacian
 set(USE_4TH_ORDER_LAPLACE "ON" CACHE BOOL "Whether to use a five-point stencil to achieve 4th order convergence")
 if ("${USE_4TH_ORDER_LAPLACE}")
@@ -119,3 +121,14 @@ if (${CUDA_BACKEND})
     cuda_add_executable(testperiodicity "src/Communication/testPeriodicity.cu")
     target_link_libraries(testperiodicity communication "${SHARED_INFRASTRUCTURE_LIB}" )
 endif()
+
+# Parareal
+set (PARAREAL_SOURCES
+    "src/Parareal/main.cu"
+    "src/Parareal/RuntimeConfiguration.cpp"
+    "src/Communication/PeriodicityCUDA.cu"
+    "src/Convection/Convection.cu"
+)
+
+cuda_add_executable(parareal "${PARAREAL_SOURCES}")
+target_link_libraries (parareal "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")

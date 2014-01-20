@@ -3,7 +3,7 @@
 
 RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
     : nu_(1.), cx_(1.), cy_(1.), cz_(1.)
-    , gridSize_(32), endTime_(0.05), timeSlices_(4)
+    , gridSize_(32), endTime_(0.05)
 {
     namespace po = boost::program_options;
 
@@ -18,7 +18,7 @@ RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
         ("endTime", po::value<double>(), "Time to simulate")
         ("cflFine", po::value<double>(), "CFL number of fine propagator")
         ("cflCoarse", po::value<double>(), "CFL number of coarse propagator")
-        ("timeSlices", po::value<double>(), "Number of time slices")
+        ("kmax", po::value<int>(), "Number of parareal iterations")
         ;
 
     po::variables_map vm;
@@ -71,9 +71,9 @@ RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
         this->set_endTime(vm["endTime"].as<double>());
     }
 
-    if (vm.count("timeSlices"))
+    if (vm.count("kmax"))
     {
-        this->set_timeSlice(vm["timeSlice"].as<int>());
+        this->set_endTime(vm["kmax"].as<int>());
     }
 
 }
