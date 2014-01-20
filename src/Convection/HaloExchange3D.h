@@ -14,6 +14,10 @@
 template<typename DataFieldType>
 class HaloExchange3D
 {
+public:
+    typedef typename DataFieldType::ValueType ValueType;
+
+private:
     // calculate the index of StrideDim in the storage order
     template<typename StorageOrder, typename Dimension, Dimension VDimension>
     struct GetDimPosition
@@ -37,7 +41,6 @@ class HaloExchange3D
     };
 
     typedef GCL::MPI_3D_process_grid_t<GCL::gcl_utils::boollist<3> > GridType;
-    typedef typename DataFieldType::ValueType ValueType;
     typedef typename DataFieldType::StorageFormat::StorageOrder StorageOrder;
     typedef typename GetDimPosition<StorageOrder, typeof(cDimI), cDimI>::Index IPos;
     typedef typename GetDimPosition<StorageOrder, typeof(cDimJ), cDimJ>::Index JPos;
@@ -45,12 +48,18 @@ class HaloExchange3D
     typedef GCL::layout_map<IPos::value, JPos::value, KPos::value> FieldLayout;
     typedef typename GridType::period_type PeriodType;
 
+#ifdef __CUDA_BACKEND__
+    typedef GCL::gcl_gpu CPUorGPUType;
+#else
+    typedef GCL::gcl_cpu CPUorGPUType;
+#endif
+
     typedef GCL::halo_exchange_dynamic_ut<
         FieldLayout,
         GCL::layout_map<0, 1, 2>,
         ValueType,
         3,
-        GCL::gcl_cpu,
+        CPUorGPUType,
         GCL::version_manual
     > HandlerType;
 
@@ -108,12 +117,7 @@ public:
         for (int i = 0; i < fields_.size(); ++i)
         {
             IJKBoundary boundary = fields_[i]->boundary();
-            DataFieldType &field = *fields_[i];
-            fieldStorages_[i] = &field(
-                    boundary.iMinusOffset(),
-                    boundary.jMinusOffset(),
-                    boundary.kMinusOffset()
-                );
+            fieldStorages_[i] = fields_[i]->storage().pStorageBase();
         }
         
         // Exchange
