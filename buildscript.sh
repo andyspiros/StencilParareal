@@ -44,8 +44,8 @@ do
     esac
 done
 
-CMAKEARGS="
-    -DCMAKE_BUILD_TYPE=Release
+CMAKEARGS=" \
+    -DCMAKE_BUILD_TYPE=Release \
 "
 
 # Programming environment
@@ -65,25 +65,26 @@ fi
 # CUDA
 if [[ $TARGET == "gpu" ]]
 then
-    CMAKEARGS+="
-        -DCUDA_BACKEND=ON
-        -DCUDA_NVCC_FLAGS=-I${MPICH_DIR}/include
+    CMAKEARGS+=" \
+        -DCUDA_BACKEND=ON \
+        -DCUDA_NVCC_FLAGS=-I${MPICH_DIR}/include \
     "
     module load cudatoolkit
 else
-    CMAKEARGS+="
-        -DCUDA_BACKEND=OFF
-    "
+    CMAKEARGS+="-DCUDA_BACKEND=OFF  "
 fi
 
 # STELLA
-CMAKEARGS+="-DSTELLA_PATH=${STELLADIR}"
+CMAKEARGS+="-DSTELLA_PATH=${STELLADIR}  "
 
 
 # Call cmake
 mkdir -p $BUILDDIR
 cd $BUILDDIR
-cmake $BASEDIR $CMAKEARGS
+echo "Calling cmake $BASEDIR $CMAKEARGS" 
+
+cmake "${BASEDIR}" $CMAKEARGS
+
 if [[ $? -gt 0 ]]
 then
     echo "Error configuring. Aborting"

@@ -3,11 +3,11 @@
 #include "MatFile.h"
 #include "SharedInfrastructure.h"
 #include "StencilFramework.h"
-#include "mpi.h"
 
 #include "Convection.h"
 #include "ConvectionFunctions.h"
 
+#include "Periodicity.h"
 
 #ifdef __CUDA_BACKEND__
     typedef BlockSize<32, 4> BSize;
@@ -129,12 +129,9 @@ namespace ConvectionStages
 }
 
 Convection::Convection(int isize, int jsize, int ksize, Real dx,
-                       Real nucoeff, Real cxcoeff, Real cycoeff, Real czcoeff,
-                       MPI_Comm comm)
-    : comm_(comm)
-    , nu_(nucoeff), cx_(cxcoeff), cy_(cycoeff), cz_(czcoeff)
+                       Real nucoeff, Real cxcoeff, Real cycoeff, Real czcoeff)
+    : nu_(nucoeff), cx_(cxcoeff), cy_(cycoeff), cz_(czcoeff)
     , dx_(dx), dx2_(dx*dx)
-    , internalHE_(true, true, true, comm)
 {
     IJKSize domain;
     domain.Init(isize, jsize, ksize);
@@ -286,116 +283,143 @@ void Convection::InitializeStencils(const IJKSize& domain)
             )
         )
     );
-
-    // Initialize halo exchange for internal field
-    internalHE_.registerField(qInternal_);
 }
 
 double Convection::DoRK4(ConvectionField& inputField, ConvectionField& outputField,
-                       double dt, double tstart, double tend)
+                       double dt, unsigned timesteps)
 {
-    double t = tstart;
-    ConvectionHaloExchange inputHE(true, true, true, comm_);
-    ConvectionHaloExchange outputHE(true, true, true, comm_);
-    inputHE.registerField(inputField);
-    outputHE.registerField(outputField);
-
     // First timestep, read from input, write into output
-    if (t < tend)
-        DoRK4Timestep(inputField, outputField, dt, inputHE);
+    if (timesteps > 0)
+        DoRK4Timestep(inputField, outputField, dt);
 
-    t += dt;
+    // All other timesteps
+    for (--timesteps; timesteps > 0; --timesteps)
+        DoRK4Timestep(outputField, outputField, dt);
 
-    for (; t < tend; t += dt)
-        DoRK4Timestep(outputField, outputField, dt, outputHE);
-
-    return t;
+    return 0.;
 }
 
 double Convection::DoEuler(ConvectionField& inputField, ConvectionField& outputField,
-                           double dt, double tstart, double tend)
+                       double dt, unsigned timesteps)
 {
-    double t = tstart;
-    ConvectionHaloExchange inputHE(true, true, true, comm_);
-    ConvectionHaloExchange outputHE(true, true, true, comm_);
-    inputHE.registerField(inputField);
-    outputHE.registerField(outputField);
-
     // First timestep, read from input, write into output
-    if (t < tend)
-        DoEulerTimestep(inputField, outputField, dt, inputHE);
+    if (timesteps)
+        DoEulerTimestep(inputField, outputField, dt);
 
-    t = tstart + dt;
+    // All other timesteps
+    for (--timesteps; timesteps; --timesteps)
+        DoEulerTimestep(outputField, outputField, dt);
 
-    for (int i = 1; t < tend; t = tstart + (++i)*dt)
-        DoEulerTimestep(outputField, outputField, dt, outputHE);
-
-    return t;
+    return 0.;
 }
 
-void Convection::DoRK4Timestep(ConvectionField& inputField, ConvectionField& outputField, double dt,
-                               ConvectionHaloExchange& inputHE)
+void Convection::DoRK4Timestep(ConvectionField& inputField, ConvectionField& outputField, double dt)
 {
     double dthalf = dt * .5;
     qEulerOut_.set_dataField(qInternal_);
     qMainIn_.set_dataField(inputField);
     qMainOut_.set_dataField(outputField);
 
+    qRHSIn_.set_dataField(inputField);
+    Periodicity<ConvectionField> periodicity(qRHSIn_);
+
+#ifndef NDEBUG
+    static int timestep = 0;
+    std::ostringstream fname;
+    fname << "trallallero_" << (++timestep) << ".mat";
+    MatFile mat(fname.str().c_str());
+    mat.addField("Input", qRHSIn_.dataField());
+#endif
+
     /* First RK stage */
     // k1 = RHS(inputField)
-    qRHSIn_.set_dataField(inputField);
     k_.set_dataField(k1_);
-    inputHE.exchange();
+    periodicity.Apply();
+#ifndef NDEBUG
+    mat.addField("InputPeriodic", qRHSIn_.dataField());
+#endif
     rhs4Stencil_->Apply();
+#ifndef NDEBUG
+    mat.addField("k1", k_.dataField());
+#endif
 
     /* Second RK timestep */
     // Euler: qInternal = qInput + dthalf * k1
     dtparam_ = dthalf;
     eulerStencil_->Apply();
+#ifndef NDEBUG
+    mat.addField("qTmp1", qInternal_);
+#endif
 
     // k2 = RHS(qInternal)
     k_.set_dataField(k2_);
     qRHSIn_.set_dataField(qInternal_);
-    internalHE_.exchange();
+    periodicity.Apply();
+#ifndef NDEBUG
+    mat.addField("qTmp1Periodic", qRHSIn_.dataField());
+#endif
     rhs4Stencil_->Apply();
+#ifndef NDEBUG
+    mat.addField("k2", k_.dataField());
+#endif
 
     /* Third RK timestep */
     // Euler: qInternal = qInput + dthalf * k2
     dtparam_ = dthalf;
     eulerStencil_->Apply();
+#ifndef NDEBUG
+    mat.addField("qTmp2", qInternal_);
+#endif
 
     // k3 = RHS(qInternal)
     k_.set_dataField(k3_);
-    internalHE_.exchange();
+    periodicity.Apply();
+#ifndef NDEBUG
+    mat.addField("qTmp2Periodic", qRHSIn_.dataField());
+#endif
     rhs4Stencil_->Apply();
+#ifndef NDEBUG
+    mat.addField("k3", k_.dataField());
+#endif
 
     /* Fourth RK timestep */
     // Euler: qInternal = qInput + dt * k3
     dtparam_ = dt;
     eulerStencil_->Apply();
+#ifndef NDEBUG
+    mat.addField("qTmp3", qInternal_);
+#endif
 
     // k4 = RHS(qInternal)
     k_.set_dataField(k4_);
-    internalHE_.exchange();
+    periodicity.Apply();
+#ifndef NDEBUG
+    mat.addField("qTmp3Periodic", qRHSIn_.dataField());
+#endif
     rhs4Stencil_->Apply();
+#ifndef NDEBUG
+    mat.addField("k4", k_.dataField());
+#endif
 
     /* Final RK stage: put things together */
     // outputField = inputField + dt/6 * (k1 + 2 k2 + 2 k3 + k4)
     rkStencil_->Apply();
 }
 
-void Convection::DoEulerTimestep(ConvectionField& inputField, ConvectionField& outputField, double dt,
-                               ConvectionHaloExchange& inputHE)
+void Convection::DoEulerTimestep(ConvectionField& inputField, ConvectionField& outputField, double dt)
 {
     // Compute RHS into k1
     qEulerOut_.set_dataField(outputField);
     qMainIn_.set_dataField(inputField);
     qMainOut_.set_dataField(outputField);
 
+    Periodicity<ConvectionField> periodicity(qRHSIn_);
+
     // k1 = RHS(inputField)
     qRHSIn_.set_dataField(inputField);
     k_.set_dataField(k1_);
-    inputHE.exchange();
+    periodicity.Apply();
+    cudaDeviceSynchronize();
     rhs2Stencil_->Apply();
 
     // Euler: outputField = inputField + dt * k1

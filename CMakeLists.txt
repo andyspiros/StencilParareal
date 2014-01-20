@@ -63,6 +63,14 @@ endif()
 # Create GCL library
 add_library(gcl "${GCL_PATH}/L3/src/GCL.cpp")
 
+# Create Communication library
+include_directories("src/Communication")
+if (${CUDA_BACKEND})
+    cuda_add_library(communication "src/Communication/PeriodicityCUDA.cu")
+else()
+    add_library(communication "src/Communication/Periodicity.cu")
+endif()
+
 # Stencil for laplacian
 set(USE_4TH_ORDER_LAPLACE "ON" CACHE BOOL "Whether to use a five-point stencil to achieve 4th order convergence")
 if ("${USE_4TH_ORDER_LAPLACE}")
@@ -97,8 +105,17 @@ set (CONVECTIONSOURCES
 
 if (${CUDA_BACKEND})
     cuda_add_executable (convection ${CONVECTIONSOURCES} "src/Convection/Convection.cu")
+    cuda_add_executable (sendrecv "src/Convection/SendRecvtest.cu")
 else()
     add_executable (convection ${CONVECTIONSOURCES} "src/Convection/Convection.cpp")
+    add_executable (sendrecv "src/Convection/SendRecvtest.cpp")
 endif()
 
-target_link_libraries (convection gcl "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
+target_link_libraries (convection gcl communication "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
+
+
+# Periodicity test
+if (${CUDA_BACKEND})
+    cuda_add_executable(testperiodicity "src/Communication/testPeriodicity.cu")
+    target_link_libraries(testperiodicity communication "${SHARED_INFRASTRUCTURE_LIB}" )
+endif()
