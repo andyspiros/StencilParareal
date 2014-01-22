@@ -38,7 +38,7 @@ public:
      *         ttend = min(tstart + k * dt),  for integer k
      */
     double DoRK4(ConvectionField& inputField, ConvectionField& outputField,
-                 double dt, unsigned timesteps);
+                 double dt, int timesteps);
 
     /**
      * Performs Euler timesteps
@@ -57,7 +57,7 @@ public:
      *         ttend = min(tstart + k * dt),  for integer k
      */
     double DoEuler(ConvectionField& inputField, ConvectionField& outputField,
-                   double dt, unsigned timesteps);
+                   double dt, int timesteps);
 
     /**
      * Performs a single RK4 timestep

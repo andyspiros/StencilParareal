@@ -1,4 +1,4 @@
-function [q, exact, error] = heatEquation(size)
+function [q, exact, error] = heatEquation(size, nu, cx, cy, cz)
 dx = 1 / (size+1);
 endtime = 0.05;
 cfl = 0.1;
@@ -8,9 +8,9 @@ dt = endtime / timesteps;
 cfl = dt / dx / dx;
 %fprintf('Actual CFL: %f\n', cfl);
 
-q = zeros(size+6, size+6, size+6);
+q = zeros(size+4, size+4, size+4);
 istart = 3;
-iend = size+3;
+iend = size+2;
 q = exactQ(q, istart, iend, 0);
 
 for t = 1:timesteps
@@ -18,22 +18,27 @@ for t = 1:timesteps
     q = rk(q, istart, iend, dt, dx);
 end
 
-exact = exactQ(zeros(size+6, size+6, size+6), istart, iend, endtime);
+exact = exactQ(zeros(size+4, size+4, size+4), istart, iend, endtime);
 errorfield = q-exact;
 error = norm(errorfield(:), 'inf') / norm(exact(:), 'inf');
 
 end
 
-function q = exactQ(q, istart, iend, t)
-size = iend-istart;
-dx = 1 / (size+1);
+function q = exactQ(q, istart, iend, t, nu, cx, cy, cz)
+size = iend-istart + 1;
+dx = 1 / size;
 for i = istart:iend
     for j = istart:iend
         for k = istart:iend
-            x = (i-istart+1)*dx;
-            y = (j-istart+1)*dx;
-            z = (k-istart+1)*dx;
-            q(i,j,k) = exp(-3*pi*pi*t)*sin(pi*x)*sin(pi*y)*sin(pi*z);
+            x = (i-istart+1/2)*dx;
+            y = (j-istart+1/2)*dx;
+            z = (k-istart+1/2)*dx;
+            
+            q(i, j, k) = ...
+                sin(2*pi*(x-cx*t)) * ...
+                sin(2*pi*(y-cy*t)) * ...
+                sin(2*pi*(z-cz*t)) * ...
+                exp(-12 * pi*pi * nu * t);
         end
     end
 end

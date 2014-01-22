@@ -15,6 +15,45 @@ struct Advection2
     __ACC__
     static T Do(Context ctx)
     {
+#ifdef UPWINDADVECTION
+        // Direction i
+        T dq_di = 1.5 * ctx[data::Center()];
+        if (ctx[_cx::Center()] > 0.)
+            dq_di = + 1.5 * ctx[data::Center()]
+                    -  2. * ctx[data::At(Offset<-1, 0, 0>())]
+                    +  .5 * ctx[data::At(Offset<-2, 0, 0>())];
+        else
+            dq_di = - 1.5 * ctx[data::Center()]
+                    +  2. * ctx[data::At(Offset< 1, 0, 0>())]
+                    -  .5 * ctx[data::At(Offset< 2, 0, 0>())];
+        dq_di *= ctx[_cx::Center()];
+
+        // Direction j
+        T dq_dj = 1.5 * ctx[data::Center()];
+        if (ctx[_cy::Center()] > 0.)
+            dq_dj = + 1.5 * ctx[data::Center()]
+                    -  2. * ctx[data::At(Offset<0, -1, 0>())]
+                    +  .5 * ctx[data::At(Offset<0, -2, 0>())];
+        else                                           
+            dq_dj = - 1.5 * ctx[data::Center()]        
+                    +  2. * ctx[data::At(Offset<0,  1, 0>())]
+                    -  .5 * ctx[data::At(Offset<0,  2, 0>())];
+        dq_dj *= ctx[_cy::Center()];
+
+        // Direction k
+        T dq_dk = 1.5 * ctx[data::Center()];        
+        if (ctx[_cz::Center()] > 0.)
+            dq_dk =   1.5 * ctx[data::Center()]
+                    -  2. * ctx[data::At(Offset<0, 0, -1>())]
+                    +  .5 * ctx[data::At(Offset<0, 0, -2>())];
+        else
+            dq_dk = - 1.5 * ctx[data::Center()]
+                    +  2. * ctx[data::At(Offset<0, 0,  1>())]
+                    -  .5 * ctx[data::At(Offset<0, 0,  2>())];
+        dq_dk *= ctx[_cz::Center()];
+
+        T tensadv = -(dq_di + dq_dj + dq_dk) / ctx[_dx::Center()];
+#else
         // Compute advection
         T dq_di = 
             +1. * ctx[data::At(Offset<-1, 0, 0>())]
@@ -31,6 +70,8 @@ struct Advection2
              + ctx[_cy::Center()] * dq_dj 
              + ctx[_cz::Center()] * dq_dk
             ) / (2. * ctx[_dx::Center()]);
+#endif
+
         return tensadv;
     }
 };

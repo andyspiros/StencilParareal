@@ -16,7 +16,7 @@ public:
     void addField(const TDataField& field, int inc = -1);
 
     template<typename TDataField>
-    void addField(const std::string& fieldName, const TDataField& field);
+    void addField(const std::string& fieldName, const TDataField& field, int inc = -1);
 
     void close();
 
@@ -57,27 +57,53 @@ struct MATTraits<double>
 ////////////////////
 
 template<typename TDataField>
-void MatFile::addField(const std::string& fieldName, const TDataField& field)
+void MatFile::addField(const std::string& fieldName, const TDataField& field, int inc)
 {
 #ifdef __CUDA_BACKEND__
     TDataField& nonconstfield = const_cast<TDataField&>(field);
     nonconstfield.SynchronizeHostStorage();
 #endif
 
+    std::ostringstream nameStream;
+    nameStream << fieldName;
+    if (inc >= 0)
+        nameStream << "_" << inc;
+    const std::string name = nameStream.str();
+
     IJKSize size = field.calculationDomain();
     IJKBoundary boundary = field.boundary();
-    int iSize = size.iSize() - boundary.iMinusOffset() + boundary.iPlusOffset();
-    int jSize = size.jSize() - boundary.jMinusOffset() + boundary.jPlusOffset();
-    int kSize = size.kSize() - boundary.kMinusOffset() + boundary.kPlusOffset();
+
+    int iSize, jSize, kSize,
+        iStart, jStart, kStart,
+        iEnd, jEnd, kEnd;
+    bool withHalo = false;
+
+    if (withHalo)
+    {
+        iSize = size.iSize() - boundary.iMinusOffset() + boundary.iPlusOffset();
+        jSize = size.jSize() - boundary.jMinusOffset() + boundary.jPlusOffset();
+        kSize = size.kSize() - boundary.kMinusOffset() + boundary.kPlusOffset();
+
+        iStart = boundary.iMinusOffset();
+        jStart = boundary.iMinusOffset();
+        kStart = boundary.kMinusOffset();
+    }
+    else
+    {
+        iSize = size.iSize();
+        jSize = size.jSize();
+        kSize = size.kSize();
+
+        iStart = 0;
+        jStart = 0;
+        kStart = 0;
+    }
+
+    iEnd = iStart + iSize;
+    jEnd = jStart + jSize;
+    kEnd = kStart + kSize;
+
     int totsize = iSize * jSize * kSize;
-
-    int iStart = boundary.iMinusOffset();
-    int jStart = boundary.iMinusOffset();
-    int kStart = boundary.kMinusOffset();
-    int iEnd = iStart + iSize;
-    int jEnd = jStart + jSize;
-    int kEnd = kStart + kSize;
-
 
     // Prepare header
     uint32_t header[2] = {14, 0};
@@ -94,8 +120,8 @@ void MatFile::addField(const std::string& fieldName, const TDataField& field)
     };
 
     // Name
-    int32_t nameheader[2] = {1, fieldName.size()};
-    int npd = (fieldName.size()+7)/8*8 - fieldName.size();
+    int32_t nameheader[2] = {1, name.size()};
+    int npd = (name.size()+7)/8*8 - name.size();
     const char padding[] = "        ";
 
     // Data length
@@ -108,7 +134,7 @@ void MatFile::addField(const std::string& fieldName, const TDataField& field)
     header[1] =
         /* flags */ 16 +
         /* sizes */ 24 +
-        /* name  */ 8 + (fieldName.size()+7)/8*8 +
+        /* name  */ 8 + (name.size()+7)/8*8 +
         /* data  */ 8 + datalength[1];
 
     // Start writing
@@ -116,7 +142,7 @@ void MatFile::addField(const std::string& fieldName, const TDataField& field)
     fs_.write(reinterpret_cast<const char*>(flags), 16);
     fs_.write(reinterpret_cast<const char*>(sizes), 24);
     fs_.write(reinterpret_cast<const char*>(nameheader), 8);
-    fs_.write(fieldName.c_str(), fieldName.size());
+    fs_.write(name.c_str(), name.size());
     fs_.write(padding, npd);
     fs_.write(reinterpret_cast<const char*>(datalength), 8);
 
@@ -139,13 +165,6 @@ void MatFile::addField(const std::string& fieldName, const TDataField& field)
 template<typename TDataField>
 void MatFile::addField(const TDataField& field, int inc)
 {
-    std::ostringstream fieldNameStream;
-    if (inc >= 0)
-        fieldNameStream << field.name() << "_" << inc;
-    else
-        fieldNameStream << field.name();
-    std::string fieldName = fieldNameStream.str();
-
-    addField(fieldName, field);
+    addField(field.name(), field, inc);
 }
 

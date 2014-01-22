@@ -51,8 +51,7 @@ double computeError(const TDataField& q,
                 double t,
                 double xstart, double xend,
                 double ystart, double yend,
-                double zstart, double zend
-,
+                double zstart, double zend,
                 double& exact_inf, double &error_inf,
                 TDataField* errfield=0
             )

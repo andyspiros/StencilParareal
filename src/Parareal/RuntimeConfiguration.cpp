@@ -4,6 +4,8 @@
 RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
     : nu_(1.), cx_(1.), cy_(1.), cz_(1.)
     , gridSize_(32), endTime_(0.05)
+    , cflFine_(0.1), cflCoarse_(0.1)
+    , kmax_(5)
 {
     namespace po = boost::program_options;
 

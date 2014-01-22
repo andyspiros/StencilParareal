@@ -21,3 +21,4 @@ slurm*.out
 # Build directory(ies)
 build*/
 todi*/
+*trallallero/

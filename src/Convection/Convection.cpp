@@ -286,7 +286,7 @@ void Convection::InitializeStencils(const IJKSize& domain)
 }
 
 double Convection::DoRK4(ConvectionField& inputField, ConvectionField& outputField,
-                       double dt, unsigned timesteps)
+                       double dt, int timesteps)
 {
     // First timestep, read from input, write into output
     if (timesteps > 0)
@@ -300,7 +300,7 @@ double Convection::DoRK4(ConvectionField& inputField, ConvectionField& outputFie
 }
 
 double Convection::DoEuler(ConvectionField& inputField, ConvectionField& outputField,
-                       double dt, unsigned timesteps)
+                       double dt, int timesteps)
 {
     // First timestep, read from input, write into output
     if (timesteps > 0)

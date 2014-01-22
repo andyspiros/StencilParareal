@@ -1,7 +1,12 @@
 cmake_minimum_required (VERSION 2.8)
 
-project (HeatEquation)
+project (StencilParareal)
 enable_language (CXX)
+
+# Include our directories
+include_directories("src")
+include_directories("src/Convection")
+include_directories("src/Parareal")
 
 # Boost
 find_package (Boost 1.48.0 REQUIRED COMPONENTS program_options)
@@ -60,6 +65,18 @@ if( "${CUDA_BACKEND}" STREQUAL "ON" )
     include_directories(${CUDA_INCLUDE_DIRS})
 endif()
 
+# Timing
+set (ENABLE_TIMING "ON" CACHE BOOL "Set this on to enable timing measurements, which slow down the solver")
+if (${ENABLE_TIMING})
+    add_definitions ("-DENABLE_TIMING")
+endif()
+
+# Error
+set (ENABLE_ERROR "ON" CACHE BOOL "Set this on to enable computation of the error after every iteration")
+if (${ENABLE_ERROR})
+    add_definitions ("-DENABLE_ERROR")
+endif()
+
 # Create GCL library
 add_library(gcl "${GCL_PATH}/L3/src/GCL.cpp")
 
@@ -71,13 +88,14 @@ else()
     add_library(communication "src/Communication/Periodicity.cu")
 endif()
 
-include_directories("src/Convection")
+# Create matfile library
+add_library(matfile "src/MatFile.cpp")
 
-# Stencil for laplacian
-set(USE_4TH_ORDER_LAPLACE "ON" CACHE BOOL "Whether to use a five-point stencil to achieve 4th order convergence")
-if ("${USE_4TH_ORDER_LAPLACE}")
-    add_definitions("-DFIVE_POINT_STENCIL")
-endif("${USE_4TH_ORDER_LAPLACE}")
+# Upwind stencil for advection
+set(UPWINDADVECTION "OFF" CACHE BOOL "Set this on to enable second-order upwind advection")
+if ("${UPWINDADVECTION}")
+    add_definitions("-DUPWINDADVECTION")
+endif("${UPWINDADVECTION}")
 
 
 ###############
@@ -102,24 +120,23 @@ endif("${USE_4TH_ORDER_LAPLACE}")
 # Create executable convection
 set (CONVECTIONSOURCES
     "src/Convection/main.cpp"
-    "src/Convection/MatFile.cpp"
 )
 
 if (${CUDA_BACKEND})
     cuda_add_executable (convection ${CONVECTIONSOURCES} "src/Convection/Convection.cu")
-    cuda_add_executable (sendrecv "src/Convection/SendRecvtest.cu")
+    cuda_add_executable (sendrecv "src/Communication/SendRecvtest.cu")
 else()
     add_executable (convection ${CONVECTIONSOURCES} "src/Convection/Convection.cpp")
-    add_executable (sendrecv "src/Convection/SendRecvtest.cpp")
+    add_executable (sendrecv "src/Communication/SendRecvtest.cpp")
 endif()
 
-target_link_libraries (convection gcl communication "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
+target_link_libraries (convection gcl communication matfile "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
 
 
 # Periodicity test
 if (${CUDA_BACKEND})
     cuda_add_executable(testperiodicity "src/Communication/testPeriodicity.cu")
-    target_link_libraries(testperiodicity communication "${SHARED_INFRASTRUCTURE_LIB}" )
+    target_link_libraries(testperiodicity communication matfile "${SHARED_INFRASTRUCTURE_LIB}" )
 endif()
 
 # Parareal
@@ -131,4 +148,4 @@ set (PARAREAL_SOURCES
 )
 
 cuda_add_executable(parareal "${PARAREAL_SOURCES}")
-target_link_libraries (parareal "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
+target_link_libraries (parareal matfile "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
