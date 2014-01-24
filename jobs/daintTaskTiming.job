@@ -1,0 +1,33 @@
+#!/bin/bash -l
+#SBATCH --ntasks-per-node=1
+
+module load boost
+export MPICH_RDMA_ENABLED_CUDA=1
+kmax=5
+
+EXECUTABLE="$(pwd)/parareal"
+BASEDIR="$(pwd)/results_$(date +'%Y-%m-%d--%H-%M-%S')"
+mkdir -p $BASEDIR
+cd $BASEDIR
+
+aprun -n $SLURM_NNODES -N 1 $EXECUTABLE --gridSize=32 --nu=0.1 --cflFine=0.1 --cflCoarse=1 "--kmax=${kmax}"
+
+resfileBase="result_${SLURM_NNODES}_${kmax}_"
+
+resfileFine=${resfileBase}fine.dat
+resfileCoarse=${resfileBase}coarse.dat
+resfileSend=${resfileBase}send.dat
+resfileRecv=${resfileBase}recv.dat
+
+for i in $(seq 1 $(($SLURM_NNODES - 2)) )
+do
+    fname="Parareal_${i}.log"
+    echo "From file ${fname}"
+
+    # Fine propagation
+    sed -rn 's|.* Fine .* done in (.*) msec$|\1|p' < $fname | tee -a $resfileFine
+    sed -rn 's|.* Coarse .* done in (.*) msec$|\1|p' < $fname | tee -a $resfileCoarse
+    sed -rn 's|.* MPI_Wait for send .* in (.*) msec$|\1|p' < $fname | tee -a $resfileSend
+    sed -rn 's|.* MPI_Wait for recv .* in (.*) msec$|\1|p' < $fname | tee -a $resfileRecv
+    echo
+done
