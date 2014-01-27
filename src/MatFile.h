@@ -60,8 +60,9 @@ template<typename TDataField>
 void MatFile::addField(const std::string& fieldName, const TDataField& field, int inc)
 {
 #ifdef __CUDA_BACKEND__
-    TDataField& nonconstfield = const_cast<TDataField&>(field);
-    nonconstfield.SynchronizeHostStorage();
+    const bool synchronize = field.isDeviceUpToDate();
+    if (synchronize)
+        field.SynchronizeHostStorage();
 #endif
 
     std::ostringstream nameStream;
@@ -158,7 +159,8 @@ void MatFile::addField(const std::string& fieldName, const TDataField& field, in
             }
 
 #ifdef __CUDA_BACKEND__
-    nonconstfield.SynchronizeDeviceStorage();
+    if (synchronize)
+        field.SynchronizeDeviceStorage();
 #endif
 }
 

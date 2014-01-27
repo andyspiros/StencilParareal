@@ -100,8 +100,7 @@ double computeError(const TDataField& q,
                 double t,
                 double xstart, double xend,
                 double ystart, double yend,
-                double zstart, double zend
-,
+                double zstart, double zend,
                 double& exact_inf, double &error_inf,
                 TDataField* errfield=0
             )
@@ -181,9 +180,9 @@ HeatConfiguration parseCommandLine(int argc, char **argv)
         ("cx", po::value<double>(), "Advection velocity in x direction")
         ("cy", po::value<double>(), "Advection velocity in y direction")
         ("cz", po::value<double>(), "Advection velocity in z direction")
-        ("gridsize", po::value<int>(), "Number of gridpoints along each direction")
-        ("timesteps", po::value<int>(), "Number of timesteps")
-        ("endtime", po::value<double>(), "Time to simulate")
+        ("gridSize", po::value<int>(), "Number of gridpoints along each direction")
+        ("timeSteps", po::value<int>(), "Number of timesteps")
+        ("endTime", po::value<double>(), "Time to simulate")
         ("cfl", po::value<double>(), "Fixed CFL condition")
         ("order", po::value<int>(), "Order of timestepping (valid values are 1 and 4)")
         ("mat", "Output intermediate states")
@@ -235,31 +234,31 @@ HeatConfiguration parseCommandLine(int argc, char **argv)
         conf.cz = vm["cz"].as<double>();
     }
 
-    if (vm.count("endtime"))
+    if (vm.count("endTime"))
     {
-        conf.endtime = vm["endtime"].as<double>();
+        conf.endtime = vm["endTime"].as<double>();
         conf.dt = conf.endtime / conf.timesteps;
     }
 
-    if (vm.count("cfl") && vm.count("gridsize") && vm.count("timesteps"))
+    if (vm.count("cfl") && vm.count("gridSize") && vm.count("timeSteps"))
     {
-        std::cerr << "Error: setting cfl, gridsize and timesteps not allowed\n";
+        std::cerr << "Error: setting cfl, gridSize and timeSteps not allowed\n";
         std::cerr << "Aborting\n";
         std::exit(1);
     }
 
     bool gridsizeSet = false;
     bool timestepsSet = false;
-    if (vm.count("gridsize"))
+    if (vm.count("gridSize"))
     {
-        conf.gridsize = vm["gridsize"].as<int>();
+        conf.gridsize = vm["gridSize"].as<int>();
         conf.dx = 1. / conf.gridsize;
         gridsizeSet = true;
     }
 
-    if (vm.count("timesteps"))
+    if (vm.count("timeSteps"))
     {
-        conf.timesteps = vm["timesteps"].as<int>();
+        conf.timesteps = vm["timeSteps"].as<int>();
         conf.dt = conf.endtime / conf.timesteps;
         timestepsSet = true;
     }
@@ -380,8 +379,10 @@ int main(int argc, char **argv)
 
     // Initialize content of q
     fillQ(qIn, conf.nu, conf.cx, conf.cy, conf.cz, 0., xstart, xend, ystart, yend, zstart, zend);
+#ifdef __CUDA_BACKEND__
     qIn.SynchronizeDeviceStorage();
     qOut.SynchronizeDeviceStorage();
+#endif
     MatFile initmat("init.mat");
     initmat.addField("qIn", qIn);
     initmat.close();

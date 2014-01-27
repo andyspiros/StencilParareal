@@ -83,9 +83,9 @@ add_library(gcl "${GCL_PATH}/L3/src/GCL.cpp")
 # Create Communication library
 include_directories("src/Communication")
 if (${CUDA_BACKEND})
-    cuda_add_library(communication "src/Communication/PeriodicityCUDA.cu")
+    cuda_add_library(communication "src/Communication/Periodicity.cu")
 else()
-    add_library(communication "src/Communication/Periodicity.cu")
+    add_library(communication "src/Communication/Periodicity.cpp")
 endif()
 
 # Create matfile library
@@ -141,11 +141,13 @@ endif()
 
 # Parareal
 set (PARAREAL_SOURCES
-    "src/Parareal/main.cu"
     "src/Parareal/RuntimeConfiguration.cpp"
-    "src/Communication/PeriodicityCUDA.cu"
-    "src/Convection/Convection.cu"
 )
 
-cuda_add_executable(parareal "${PARAREAL_SOURCES}")
-target_link_libraries (parareal matfile "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
+if (${CUDA_BACKEND})
+    cuda_add_executable(parareal "src/Parareal/main.cu" "src/Convection/Convection.cu" "${PARAREAL_SOURCES}")
+else()
+    add_executable(parareal "src/Parareal/main.cpp" "src/Convection/Convection.cpp" "${PARAREAL_SOURCES}")
+endif()
+target_link_libraries (parareal matfile communication "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
+

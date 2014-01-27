@@ -323,83 +323,42 @@ void Convection::DoRK4Timestep(ConvectionField& inputField, ConvectionField& out
     qRHSIn_.set_dataField(inputField);
     Periodicity<ConvectionField> periodicity(qRHSIn_);
 
-#ifndef NDEBUG
-    static int timestep = 0;
-    std::ostringstream fname;
-    fname << "trallallero_" << (++timestep) << ".mat";
-    MatFile mat(fname.str().c_str());
-    mat.addField("Input", qRHSIn_.dataField());
-#endif
-
     /* First RK stage */
     // k1 = RHS(inputField)
     k_.set_dataField(k1_);
     periodicity.Apply();
-#ifndef NDEBUG
-    mat.addField("InputPeriodic", qRHSIn_.dataField());
-#endif
     rhs4Stencil_->Apply();
-#ifndef NDEBUG
-    mat.addField("k1", k_.dataField());
-#endif
 
     /* Second RK timestep */
     // Euler: qInternal = qInput + dthalf * k1
     dtparam_ = dthalf;
     eulerStencil_->Apply();
-#ifndef NDEBUG
-    mat.addField("qTmp1", qInternal_);
-#endif
 
     // k2 = RHS(qInternal)
     k_.set_dataField(k2_);
     qRHSIn_.set_dataField(qInternal_);
     periodicity.Apply();
-#ifndef NDEBUG
-    mat.addField("qTmp1Periodic", qRHSIn_.dataField());
-#endif
     rhs4Stencil_->Apply();
-#ifndef NDEBUG
-    mat.addField("k2", k_.dataField());
-#endif
 
     /* Third RK timestep */
     // Euler: qInternal = qInput + dthalf * k2
     dtparam_ = dthalf;
     eulerStencil_->Apply();
-#ifndef NDEBUG
-    mat.addField("qTmp2", qInternal_);
-#endif
 
     // k3 = RHS(qInternal)
     k_.set_dataField(k3_);
     periodicity.Apply();
-#ifndef NDEBUG
-    mat.addField("qTmp2Periodic", qRHSIn_.dataField());
-#endif
     rhs4Stencil_->Apply();
-#ifndef NDEBUG
-    mat.addField("k3", k_.dataField());
-#endif
 
     /* Fourth RK timestep */
     // Euler: qInternal = qInput + dt * k3
     dtparam_ = dt;
     eulerStencil_->Apply();
-#ifndef NDEBUG
-    mat.addField("qTmp3", qInternal_);
-#endif
 
     // k4 = RHS(qInternal)
     k_.set_dataField(k4_);
     periodicity.Apply();
-#ifndef NDEBUG
-    mat.addField("qTmp3Periodic", qRHSIn_.dataField());
-#endif
     rhs4Stencil_->Apply();
-#ifndef NDEBUG
-    mat.addField("k4", k_.dataField());
-#endif
 
     /* Final RK stage: put things together */
     // outputField = inputField + dt/6 * (k1 + 2 k2 + 2 k3 + k4)
@@ -419,7 +378,6 @@ void Convection::DoEulerTimestep(ConvectionField& inputField, ConvectionField& o
     qRHSIn_.set_dataField(inputField);
     k_.set_dataField(k1_);
     periodicity.Apply();
-    cudaDeviceSynchronize();
     rhs2Stencil_->Apply();
 
     // Euler: outputField = inputField + dt * k1

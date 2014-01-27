@@ -1,4 +1,5 @@
 #include "Periodicity.h"
+#include "CUDAStreams.h"
 #include <cstdio>
 
 __device__ double& access(double *pField,
@@ -176,7 +177,7 @@ __host__ static inline void ApplyPeriodic(double *pField,
     kblocks = dsizek / blockSizey + !!(dsizek % blockSizey);
     //std::cout << "Dsize: " << dsizei << " " << dsizej << " " << dsizek << std::endl;
     //std::cout << "PeriodicI with " << jblocks << "x" << kblocks << " blocks\n";
-    ApplyPeriodicI<<< dim3(jblocks, kblocks, 2), dim3(blockSizex, blockSizey) >>>(
+    ApplyPeriodicI<<< dim3(jblocks, kblocks, 2), dim3(blockSizex, blockSizey), 0, CUDAStreams::kernelStream() >>>(
             pField,
             haloim, haloip, dsizei, stridei,
             halojm, halojp, dsizej, stridej,
@@ -187,7 +188,7 @@ __host__ static inline void ApplyPeriodic(double *pField,
     iblocks = tsizei / blockSizex + !!(tsizei % blockSizex);
     kblocks = dsizek / blockSizey + !!(dsizek % blockSizey);
     //std::cout << "PeriodicJ with " << iblocks << "x" << kblocks << " blocks\n";
-    ApplyPeriodicJ<<< dim3(iblocks, kblocks, 2), dim3(blockSizex, blockSizey) >>>(
+    ApplyPeriodicJ<<< dim3(iblocks, kblocks, 2), dim3(blockSizex, blockSizey), 0, CUDAStreams::kernelStream() >>>(
             pField,
             haloim, haloip, dsizei, stridei,
             halojm, halojp, dsizej, stridej,
@@ -198,7 +199,7 @@ __host__ static inline void ApplyPeriodic(double *pField,
     iblocks = tsizei / blockSizex + !!(tsizei % blockSizex);
     jblocks = tsizej / blockSizey + !!(tsizej % blockSizey);
     //std::cout << "PeriodicK with " << iblocks << "x" << jblocks << " blocks\n";
-    ApplyPeriodicK<<< dim3(iblocks, jblocks, 2), dim3(blockSizex, blockSizey) >>>(
+    ApplyPeriodicK<<< dim3(iblocks, jblocks, 2), dim3(blockSizex, blockSizey), 0, CUDAStreams::kernelStream() >>>(
             pField,
             haloim, haloip, dsizei, stridei,
             halojm, halojp, dsizej, stridej,
