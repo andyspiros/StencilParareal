@@ -15,11 +15,14 @@ public:
     double cx() const { return cx_; }
     double cy() const { return cy_; }
     double cz() const { return cz_; }
+    int timeSlices() const { return timeSlices_; }
+    double timeStepsFine() const { return timeStepsFine_; }
+    double timeStepsCoarse() const { return timeStepsCoarse_; }
     int gridSize() const { return gridSize_; }
     double endTime() const { return endTime_; }
-    double cflFine() const { return cflFine_; }
-    double cflCoarse() const { return cflCoarse_; }
     double kmax() const { return kmax_; }
+    bool mat() const { return mat_; }
+    bool async() const {  return async_; }
 
     // Setters
     void set_nu(double x) { nu_ = x; }
@@ -28,9 +31,11 @@ public:
     void set_cz(double x) { cz_ = x; }
     void set_gridSize(int x) { gridSize_ = x; }
     void set_endTime(double x) { endTime_ = x; }
-    void set_cflFine(double x) { cflFine_ = x; }
-    void set_cflCoarse(double x) { cflCoarse_ = x; }
+    void set_timeStepsFine(int x) { timeStepsFine_ = x; }
+    void set_timeStepsCoarse(int x) { timeStepsCoarse_ = x; }
     void set_kmax(int x) { kmax_ = x; }
+    void set_mat(bool x) { mat_ = x; }
+    void set_async(bool x) { async_ = x; }
 
 
     // Non-stored info
@@ -48,8 +53,7 @@ public:
      */
     double dtFine() const
     {
-        const double dx = this->dx();
-        return dx*dx * cflFine(); 
+        return endTime_ / timeStepsFine_;
     }
 
     /**
@@ -57,17 +61,47 @@ public:
      */
     double dtCoarse() const
     {
-        const double dx = this->dx();
-        return dx*dx * cflCoarse(); 
+        return endTime_ / timeStepsCoarse_;
     }
 
+
+    /**
+     * \return The size of a time slice is returned
+     */
+    double timeSliceSize() const
+    {
+        return endTime_ / timeSlices_;
+    }
+
+    /**
+     * \return The CFL number used by the fine propagator is returned
+     */
+    double cflFine() const { return cfl(dtFine()); }
+
+    /**
+     * \return The CFL number used by the coarse propagator is returned
+     */
+    double cflCoarse() const { return cfl(dtCoarse()); }
+
 private:
+
+    inline double cfl(double dt) const
+    {
+        const double c = std::max(std::max(cx_, cy_), cz_);
+        const double dt_dx = dt / dx();
+        const double dt_dx2 = dt_dx / dx();
+        return std::max(nu_*dt_dx2, c*dt_dx);
+    }
+
     double nu_;
     double cx_, cy_, cz_;
     int gridSize_;
     double endTime_;
-    double cflFine_, cflCoarse_;
+    int timeSlices_;
+    int timeStepsFine_, timeStepsCoarse_;
     int kmax_;
+    bool mat_;
+    bool async_;
 };
 
 #endif // RUNTIMECONFIGURATION_H_

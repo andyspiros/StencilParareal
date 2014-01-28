@@ -8,6 +8,13 @@
 #include "StencilFramework.h"
 #include "MatFile.h"
 
+// Compile-time checks
+#ifdef ENABLE_INTERNAL_TIMING
+# ifdef ENABLE_ERROR
+#  warning Enabling both internal timing and error computation after every iteration. Timings will be inaccurate
+# endif
+#endif
+
 enum
 {
     q_, qfine_, qcoarsenew_, qcoarseold_
@@ -42,6 +49,16 @@ inline void SynchronizeCUDA()
 {
 #ifdef __CUDA_BACKEND__
     cudaDeviceSynchronize();
+#endif
+}
+
+/**
+ * Writes information about the internal timing if requested at compile-time
+ */
+inline void printTimer(double e, const char* str, std::ofstream& fs)
+{
+#ifdef ENABLE_INTERNAL_TIMING
+    fs << " - " << str << " done in " << e << " msec\n";
 #endif
 }
 
@@ -140,14 +157,15 @@ double computeErrorReference(const TDataField& field, const TDataField& referenc
     const int jend = jstart + jsize;
     const int kend = kstart + ksize;
 
-    double error = 0.;
+    double error = 0., maxfield = 0.;
 
-    for (int i = jstart; i < iend; ++i)
-        for (int j = jstart; j < jend; ++j)
-            for (int k = kstart; k < kend; ++k)
+    for (int i = 0; i < isize; ++i)
+        for (int j = 0; j < jsize; ++j)
+            for (int k = 0; k < ksize; ++k)
             {
                 double e = std::abs(field(i,j,k) - reference(i,j,k));
                 error = std::max(error, e);
+                maxfield = std::max(std::abs(field(i, j, k)), maxfield);
             }
 
 #ifdef __CUDA_BACKEND__
@@ -157,7 +175,7 @@ double computeErrorReference(const TDataField& field, const TDataField& referenc
         reference.SynchronizeDeviceStorage();
 #endif
 
-    return error;
+    return error/maxfield;
 }
 
 
@@ -169,24 +187,12 @@ int main(int argc, char **argv)
     MPI_Comm_rank(MPI_COMM_WORLD, &commrank);
     const bool isRoot = commrank == 0;
     const bool isLast = commrank == commsize - 1;
-    int mpiret;
 
     RuntimeConfiguration conf(argc, argv);
 
-    // Compute timesteps
-    const double dt = conf.endTime() / commsize;
-    double dtFine = conf.dtFine();
-    double dtCoarse = conf.dtCoarse();
-    int timestepsFine = static_cast<int>(dt / dtFine + .5);
-    int timestepsCoarse = static_cast<int>(dt / dtCoarse + .5);
-    dtFine = dt / timestepsFine;
-    dtCoarse = dt / timestepsCoarse;
-    double cflFine = dtFine / (conf.dx()*conf.dx());
-    double cflCoarse = dtCoarse / (conf.dx()*conf.dx());
-
     // Compute my start and end time
-    const double timeStart = dt * commrank;
-    const double timeEnd = dt * (commrank + 1);
+    const double timeStart = conf.timeSliceSize() * commrank;
+    const double timeEnd = conf.timeSliceSize() * (commrank + 1);
 
     if (isRoot)
     std::cout << "Running with:\n"
@@ -196,38 +202,22 @@ int main(int argc, char **argv)
         << " - advection velocity in z: " << conf.cz() << "\n"
         << " - spatial discretization step: " << conf.dx() << "\n"
         << " - endtime: " << conf.endTime() << "\n"
-        << " - number of time slices: " << commsize << "\n"
-        << " - time slice size: " << dt << "\n"
-        << " - CFL fine: " << cflFine << "\n"
-        << " - CFL coarse: " << cflCoarse << "\n"
-        << " - timestep size fine: " << dtFine << "\n"
-        << " - timestep size coarse: " << dtCoarse << "\n"
-        << " - timestep fine propagator: " << timestepsFine << "\n"
-        << " - timestep coarse propagator: " << timestepsCoarse << "\n"
+        << " - number of time slices: " << conf.timeSlices() << "\n"
+        << " - time slice size: " << conf.timeSliceSize() << "\n"
+        << " - CFL fine: " << conf.cflFine() << "\n"
+        << " - CFL coarse: " << conf.cflCoarse() << "\n"
+        << " - timestep size fine: " << conf.dtFine() << "\n"
+        << " - timestep size coarse: " << conf.dtCoarse() << "\n"
+        << " - timestep fine propagator: " << conf.timeStepsFine() << "\n"
+        << " - timestep coarse propagator: " << conf.timeStepsCoarse() << "\n"
         << " - parareal iterations: " << conf.kmax() << "\n"
+        << " - asynchronous communications: " << (conf.async() ? "Enabled" : "Disabled") << "\n"
+        << " - intermediate fields in mat files: " << (conf.mat() ? "Yes" : "No") << "\n"
         << std::endl;
-
-    // Reduce timestepsFine by one
-    --timestepsFine;
 
     // Calculation domain and boundaries
     IJKSize domain; domain.Init(conf.gridSize(), conf.gridSize(), conf.gridSize()); 
     KBoundary kboundary; kboundary.Init(-convectionBoundaryLines, convectionBoundaryLines);
-
-    // Instantiate fields
-    ConvectionField q, qfromprevious, qfine, qcoarseold, qcoarsenew;
-    ConvectionField qreference;
-    q.Init("q", domain, kboundary);
-    qfromprevious.Init("qfromprevious", domain, kboundary);
-    qfine.Init("qfine", domain, kboundary);
-    qcoarseold.Init("qcoarseold", domain, kboundary);
-    qcoarsenew.Init("qcoarsenew", domain, kboundary);
-    qreference.Init("qreference", domain, kboundary);
-
-    // Create mat files
-    std::ostringstream matfname;
-    matfname << "Parareal_" << commrank << ".mat";
-    MatFile matfile(matfname.str());
 
     // Create log file
     std::ostringstream logfname;
@@ -237,37 +227,19 @@ int main(int argc, char **argv)
     logfile << "Rank " << commrank << " integrates from " << timeStart
         << " to " << timeEnd << "\n" << std::endl;
 
-    // Field with initial conditions for root only,
-    // otherwise, compute initial conditions in q
-    ConvectionField* qinitial;
-    if (isRoot)
-    {
-        qinitial = new ConvectionField;
-        qinitial->Init("qinitial", domain, kboundary);
-        SynchronizeHost(*qinitial);
-        fillQ(*qinitial, conf.nu(), conf.cx(), conf.cy(), conf.cz(), 0., 0., 1., 0., 1., 0., 1.);
-        SynchronizeDevice(*qinitial);
-        qfromprevious = *qinitial;
-    }
-    else
-        fillQ(qfromprevious, conf.nu(), conf.cx(), conf.cy(), conf.cz(), 0., 0., 1., 0., 1., 0., 1.);
-    SynchronizeDevice(qfromprevious);
+    // Create mat file
+    logfname.seekp(0);
+    logfname << "Parareal_" << commrank << ".mat";
+    MatFile matfile(logfname.str());
 
-    SynchronizeCUDA();
-    matfile.addField("qinitial", qfromprevious);
-    logfile << " - Initial condition computed" << std::endl;
-
-    // MPI requests for asynchronous communication
-    MPI_Request reqRecv, reqSend;
-    MPI_Status status;
-
-    // Base storage for q and size of data
-    const IJKSize& psize = q.storage().paddedSize();
-    const int datasize = psize.iSize()*psize.jSize()*psize.kSize();
-    double *qFromPreviousBuffer = qfromprevious.storage().pStorageBase();
-    double *qToNextBuffer = q.storage().pStorageBase();
-    logfile << " - qFromPreviousBuffer is " << qFromPreviousBuffer << std::endl;
-    logfile << " - qToNextBuffer is " << qToNextBuffer << std::endl;
+    // Initialize fields
+    ConvectionField q, qinitial, qcoarseold, qcoarsenew, qfine, qreference;
+    q.Init("q", domain, kboundary);
+    qinitial.Init("qinitial", domain, kboundary);
+    qcoarseold.Init("qcoarseold", domain, kboundary);
+    qcoarsenew.Init("qcoarsenew", domain, kboundary);
+    qfine.Init("qfine", domain, kboundary);
+    qreference.Init("qreference", domain, kboundary);
 
     // Initialize update stencil
     Stencil updateStencil;
@@ -293,183 +265,260 @@ int main(int argc, char **argv)
         )
     );
 
-    // Convectionj object
+    // Convection object
     logfile << " - Initializing convection with nu = " << conf.nu() << std::endl;
     Convection convection(conf.gridSize(), conf.gridSize(), conf.gridSize(), conf.dx(), conf.nu(), conf.cx(), conf.cy(), conf.cz());
 
-    // Timer
-    InternalTimer internalTimer;
+    // Fill initial solution
+    SynchronizeHost(qinitial);
+    fillQ(qinitial, conf.nu(), conf.cx(), conf.cy(), conf.cz(), 0., 0., 1., 0., 1., 0., 1.); 
+    SynchronizeDevice(qinitial);
 
-    // Fill reference solution
-    SynchronizeDevice(qreference);
-    logfile << " - Integrate reference to " << (commrank+1)*(timestepsFine+1)*dtFine << std::endl;
-    convection.DoRK4(qfromprevious, qreference, dtFine, (commrank+1)*(timestepsFine+1));
-    SynchronizeCUDA();
-    SynchronizeHost(qreference);
+    // Prepare MPI objects
+    MPI_Request reqSend, reqRecv;
+    MPI_Status status;
+    int mpiret;
+    double * const pRecv = qinitial.storage().pStorageBase();
+    double * const pSend = q.storage().pStorageBase();
+
+    const IJKSize psize = q.storage().paddedSize();
+    const int dataSize = psize.iSize() * psize.jSize() * psize.kSize();
+
+    // Timers
+    InternalTimer internalTimer;
+    std::vector<double> times(6*conf.kmax() + 2);
 
 
     /**********************************
      * PARAREAL ALGORITHM STARTS HERE *
      **********************************/
 
-
-    /*
-     * 1. Initialization
-     */
-    internalTimer.start();
-    convection.DoEuler(qfromprevious, qfromprevious, dtCoarse, timestepsCoarse*commrank);
-    convection.DoEuler(qfromprevious, qcoarseold, dtCoarse, timestepsCoarse);
+    // Compute reference solution
+    logfile << " - Computing reference solution" << std::endl;
+    double eserial = MPI_Wtime();
+    convection.DoRK4(qinitial, qreference, conf.dtFine(), (commrank+1)*conf.timeStepsFine());
     SynchronizeCUDA();
-    logfile << " - Initialization done in " << internalTimer.elapsed() << " msec" << std::endl;
+    eserial = MPI_Wtime() - eserial;
+    logfile << " - Reference solution computed\n" << std::endl;
+    convection.DoRK4(qinitial, qfine, conf.dtFine(), 1);
+    matfile.addField(qreference);
+    MPI_Barrier(MPI_COMM_WORLD);
 
-    if (isRoot)
-        std::cout << "Initialization done" << std::endl;
-
-    logfile << "\n";
+    // Initialize timing
+    times[0] = MPI_Wtime();
 
     /*
-     * Begin of iteration
+     * Part 1: initialization
      */
+    convection.DoEuler(qinitial, qinitial, conf.dtCoarse(), conf.timeStepsCoarse()*commrank);
+    convection.DoEuler(qinitial, qcoarseold, conf.dtCoarse(), conf.timeStepsCoarse());
+
+    convection.DoRK4(qinitial, qfine, conf.dtFine(), 1);
+
+#ifdef ENABLE_INTERNAL_TIMING
+    times[1] = MPI_Wtime();
+#endif
+
+    if (conf.mat())
+    {
+        matfile.addField(qinitial);
+        matfile.addField(qcoarseold);
+    }
+
+
+    // Begin iteration
     for (int k = 0; k < conf.kmax(); ++k)
     {
-        logfile << "k = " << k << std::endl;
-        
-        if (isRoot)
-            std::cout << "Begin of iteration " << k << std::endl;
+        logfile << "Begin iteration " << k << "\n";
 
         /*
-         * 2. Fine propagation
-         */
-        internalTimer.start();
-        convection.DoRK4Timestep(qfromprevious, qfine, dtFine);
-        logfile << " - First timestep of fine propagator done in " << internalTimer.elapsed() << " msec" << std::endl;
-
-        if (!isRoot)
-        {
-            internalTimer.start();
-            mpiret = MPI_Irecv(qFromPreviousBuffer, datasize, MPI_DOUBLE, commrank-1, k, MPI_COMM_WORLD, &reqRecv);
-            logfile << " - MPI_Irecv returned " << mpiret << " in " << internalTimer.elapsed() << " msec"<< std::endl;
-        }
-
-        internalTimer.start();
-        convection.DoRK4(qfine, qfine, dtFine, timestepsFine);
-        logfile << " - Fine propagation done in " << internalTimer.elapsed() << " msec" << std::endl;
-
-
-        /**
-         * 3. Coarse propagation
+         * Part 2: fine integration
          */
 
-        if (!isLast && k > 0)
-        {
-            internalTimer.start();
-            mpiret = MPI_Wait(&reqSend, &status);
-            logfile << " - MPI_Wait for send returned " << mpiret << " in " << internalTimer.elapsed() << " msec"<< std::endl;
-        }
+        // First step of fine propagation
+        convection.DoRK4(qinitial, qfine, conf.dtFine(), 1);
 
-        if (!isRoot)
-        {
-            // Wait for receive to complete
-            internalTimer.start();
-            mpiret = MPI_Wait(&reqRecv, &status);
-            logfile << " - MPI_Wait for recv returned " << mpiret << " in " << internalTimer.elapsed() << " msec"<< std::endl;
+        // Receive data in qinitial
+        if (!isRoot && conf.async())
+            MPI_Irecv(pRecv, dataSize, MPI_DOUBLE, commrank-1, k, MPI_COMM_WORLD, &reqRecv);
 
-            // Integrate with coarse propagator
-            internalTimer.start();
-            convection.DoEuler(qfromprevious, qcoarsenew, dtCoarse, timestepsCoarse);
-            logfile << " - Coarse propagator done in " << internalTimer.elapsed() << " msec" << std::endl;
+        // Remaining steps of fine propagation
+        convection.DoRK4(qfine, qfine, conf.dtFine(), conf.timeStepsFine()-1);
 
-            // Update solution
-            internalTimer.start();
-            updateStencil.Apply();
-            logfile << " - Solution updated in " << internalTimer.elapsed() << " msec" << std::endl;
+        // Serialize
+        if (conf.mat())
+            matfile.addField(qfine, k);
 
-            // Store old coarse solution
-            qcoarseold.SwapWith(qcoarsenew);
-        }
-        else
-        {
-            if(k == 0)
-            {
-                q.SwapWith(qfine);
-                qToNextBuffer = q.storage().pStorageBase();
-            }
-        }
-
-        // Send to next process
-        if (!isLast)
-        {
-            internalTimer.start();
-            mpiret = MPI_Isend(qToNextBuffer, datasize, MPI_DOUBLE, commrank+1, k, MPI_COMM_WORLD, &reqSend);
-            logfile << " - MPI_Isend returned " << mpiret << " in " << internalTimer.elapsed() << " msec"<<  std::endl;
-        }
-
-
-
-        /**
-         * 4. Error estimation
-         */
-
-#ifdef ENABLE_ERROR
-        // Compute error
+#ifdef ENABLE_INTERNAL_TIMING
         SynchronizeCUDA();
-        double error = computeErrorReference(q, qreference);
-        matfile.addField("solution_at", q, k);
-        matfile.addField("reference_at", qreference, k);
-        SynchronizeDevice(q);
-
-        logfile << " - Error at end of iteration " << k << ": " << error << "\n";
+        times[6*k + 2] = MPI_Wtime();
 #endif
+
+        /*
+         * Part 3: coarse propagation and update
+         */
+
+        // Receive data
+        if (!isRoot && conf.async())
+            MPI_Wait(&reqRecv, &status);
+        else if (!isRoot)
+        {
+            SynchronizeCUDA();
+            MPI_Recv(pRecv, dataSize, MPI_DOUBLE, commrank-1, k, MPI_COMM_WORLD, &status);
+            SynchronizeCUDA();
+        }
+
+        if (conf.mat())
+            matfile.addField(qinitial, k);
+
+#ifdef ENABLE_INTERNAL_TIMING
+        SynchronizeCUDA();
+        times[6*k + 3] = MPI_Wtime();
+#endif
+
+        // Coarse propagation
+        convection.DoEuler(qinitial, qcoarsenew, conf.dtCoarse(), conf.timeStepsCoarse());
+
+        if (conf.mat())
+            matfile.addField(qcoarsenew, k);
+
+#ifdef ENABLE_INTERNAL_TIMING
+        SynchronizeCUDA();
+        times[6*k + 4] = MPI_Wtime();
+#endif
+
+        // Wait for send
+        if (!isLast && k > 0 && conf.async())
+            MPI_Wait(&reqSend, &status);
+
+#ifdef ENABLE_INTERNAL_TIMING
+        SynchronizeCUDA();
+        times[6*k + 5] = MPI_Wtime();
+#endif
+
+        // Update solution
+        updateStencil.Apply();
+
+#ifdef ENABLE_INTERNAL_TIMING
+        SynchronizeCUDA();
+        times[6*k + 6] = MPI_Wtime();
+#endif
+
+        if (conf.mat())
+            matfile.addField(q, k);
+
+        // Send solution to next process
+        if (!isLast && conf.async())
+            MPI_Isend(pSend, dataSize, MPI_DOUBLE, commrank+1, k, MPI_COMM_WORLD, &reqSend);
+        else if (!isLast)
+        {
+            SynchronizeCUDA();
+            MPI_Send(pSend, dataSize, MPI_DOUBLE, commrank+1, k, MPI_COMM_WORLD);
+            SynchronizeCUDA();
+        }
+
+        // Swap qcoarse solutions
+        qcoarsenew.SwapWith(qcoarseold);
+
+
+        /*
+         * Part 4: compute error
+         */
+#ifdef ENABLE_ERROR
+        logfile << " - Error after iteration " << k << ": " << computeErrorReference(q, qreference)
+                << std::endl;
+#endif
+
         logfile << std::endl;
+
+#ifdef ENABLE_INTERNAL_TIMING
+        SynchronizeCUDA();
+        times[6*k + 7] = MPI_Wtime();
+#endif
     }
 
-    logfile << "Parareal iteration finished. Cleaning up\n";
+    // Get total timing
+    double eparareal = MPI_Wtime() - times[0];
 
-    // Wait for the last send
-    if (!isLast)
+    // Wait for last send
+    if (!isLast && conf.async())
+        MPI_Wait(&reqSend, &status);
+
+
+    /********************************
+     * PARAREAL ALGORITHM ENDS HERE *
+     ********************************/
+
+    // Collect times
+    for (int i = 6*conf.kmax()+1; i > 0; --i)
+        times[i] = times[i] - times[i-1];
+
+    logfile << "\n\nTimings:\n";
+    for (int i = 0; i < 6*conf.kmax()+2; ++i)
+        logfile << " - " << times[i] << "\n";
+
+    std::vector<double> timesGlobal(isRoot ? (6*conf.kmax()+2) * (commsize) : 0);
+    MPI_Gather(&times[0], 6*conf.kmax()+2, MPI_DOUBLE, &timesGlobal[0], 6*conf.kmax()+2, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+#ifdef ENABLE_INTERNAL_TIMING
+    // Print times
+    if (isRoot)
     {
-        internalTimer.start();
-        mpiret = MPI_Wait(&reqSend, &status);
-        logfile << " - MPI_Wait for last send returned " << mpiret << " in " << internalTimer.elapsed() << " msec"<< std::endl;
-    }
+        const int b = 6*conf.kmax() + 2;
 
-    logfile << " - Saving solution and reference to file\n";
-    matfile.addField("reference", qreference);
+        std::cout <<     "'Initialization             ':   ";
+        for (int p = 0; p < commsize; ++p)
+            std::cout << std::setw(12) << timesGlobal[p*b + 1] << "  ";
+        std::cout << "\n";
+
+        for (int k = 0; k < conf.kmax(); ++k)
+        {
+            std::cout << "'Fine propagation  , step " << k << " ':   ";
+            for (int p = 0; p < commsize; ++p)
+                std::cout << std::setw(12) << timesGlobal[p*b + 6*k + 2] << "  ";
+            std::cout << "\n";
+
+            std::cout << "'Receive data      , step " << k << " ':   ";
+            for (int p = 0; p < commsize; ++p)
+                std::cout << std::setw(12) << timesGlobal[p*b + 6*k + 3] << "  ";
+            std::cout << "\n";
+
+            std::cout << "'Coarse propagation, step " << k << " ':   ";
+            for (int p = 0; p < commsize; ++p)
+                std::cout << std::setw(12) << timesGlobal[p*b + 6*k + 4] << "  ";
+            std::cout << "\n";
+
+            std::cout << "'Send data         , step " << k << " ':   ";
+            for (int p = 0; p < commsize; ++p)
+                std::cout << std::setw(12) << timesGlobal[p*b + 6*k + 5] << "  ";
+            std::cout << "\n";
+
+            std::cout << "'Update solution   , step " << k << " ':   ";
+            for (int p = 0; p < commsize; ++p)
+                std::cout << std::setw(12) << timesGlobal[p*b + 6*k + 6] << "  ";
+            std::cout << "\n";
+        }
+    }
+#endif
+
+    // Serializing last result
     matfile.addField("solution", q);
 
-    // Close matfile
-    matfile.close();
-
-    // Delete root field
-    if (isRoot)
-        delete qinitial;
-
-    logfile << " - Finalization\n";
-
-    // Compute error
+    // Writing error
+    MPI_Barrier(MPI_COMM_WORLD);
     if (isLast)
     {
-        SynchronizeHost(q);
-        double error = computeErrorReference(q, qreference);
-        SynchronizeDevice(q);
-
-        MPI_Send(&error, 1, MPI_DOUBLE, 0, conf.kmax(), MPI_COMM_WORLD);
+        double e = computeErrorReference(q, qreference);
+        std::cout << std::endl << "Error at end: " << e << std::endl;
+        std::cout << "Speedup: " << eserial / eparareal << std::endl;
     }
-    if (isRoot)
-    {
-        double error;
-        MPI_Status status;
-        MPI_Recv(&error, 1, MPI_DOUBLE, commsize-1, conf.kmax(), MPI_COMM_WORLD, &status);
 
-        std::cout << "Final error at time " << conf.endTime() << " is "
-            << std::scientific << std::setprecision(10) << error << "\n";
-    }
+    // Closing log file
+    logfile << " - Exiting. Goodbye\n\n";
+    logfile << std::endl;
 
     // Finalize
     MPI_Finalize();
-
-    logfile << " - Exiting. Goodbye\n\n";
-    logfile << std::endl;
 
     return 0;
 }

@@ -1,14 +1,18 @@
 #include "RuntimeConfiguration.h"
 #include "boost/program_options.hpp"
+#include "mpi.h"
 
 RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
     : nu_(1.), cx_(1.), cy_(1.), cz_(1.)
     , gridSize_(32), endTime_(0.05)
-    , cflFine_(0.1), cflCoarse_(0.1)
-    , kmax_(5)
+    , timeStepsFine_(128), timeStepsCoarse_(32)
+    , kmax_(5), mat_(false), async_(true)
 {
-    namespace po = boost::program_options;
+    // Retrieve MPI information
+    MPI_Comm_size(MPI_COMM_WORLD, &timeSlices_);
 
+    // Create description of allowed options
+    namespace po = boost::program_options;
     po::options_description desc("Allowed options");
     desc.add_options()
         ("help", "Produce this help message")
@@ -18,14 +22,18 @@ RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
         ("cz", po::value<double>(), "Advection velocity in z direction")
         ("gridSize", po::value<int>(), "Number of grid points along each direction")
         ("endTime", po::value<double>(), "Time to simulate")
-        ("cflFine", po::value<double>(), "CFL number of fine propagator")
-        ("cflCoarse", po::value<double>(), "CFL number of coarse propagator")
+        ("timeStepsFine", po::value<int>(), "Number of fine timesteps per timeslice")
+        ("timeStepsCoarse", po::value<int>(), "Number of coarse timesteps per timeslice")
         ("kmax", po::value<int>(), "Number of parareal iterations")
+        ("mat", "Serialize intermediate fields")
+        ("noasync", "Avoid asynchronous communication")
         ;
 
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
     po::notify(vm);
+
+    // Parse options
 
     if (vm.count("help"))
     {
@@ -58,24 +66,34 @@ RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
         this->set_gridSize(vm["gridSize"].as<int>());
     }
 
-    if (vm.count("cflCoarse"))
-    {
-        this->set_cflCoarse(vm["cflCoarse"].as<double>());
-    }
-
-    if (vm.count("cflFine"))
-    {
-        this->set_cflFine(vm["cflFine"].as<double>());
-    }
-
     if (vm.count("endTime"))
     {
         this->set_endTime(vm["endTime"].as<double>());
     }
 
-    if (vm.count("kmax"))
+    if (vm.count("timeStepsCoarse"))
     {
-        this->set_endTime(vm["kmax"].as<int>());
+        this->set_timeStepsCoarse(vm["timeStepsCoarse"].as<int>());
     }
 
+    if (vm.count("timeStepsFine"))
+    {
+        this->set_timeStepsFine(vm["timeStepsFine"].as<int>());
+    }
+
+    if (vm.count("kmax"))
+    {
+        this->set_kmax(vm["kmax"].as<int>());
+    }
+
+    if (vm.count("mat"))
+    {
+        this->set_mat(true);
+    }
+
+    if (vm.count("noasync"))
+    {
+        this->set_async(false);
+    }
 }
+

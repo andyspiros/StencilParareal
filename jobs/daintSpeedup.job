@@ -1,0 +1,21 @@
+#!/bin/bash -l
+
+export MPICH_RDMA_ENABLED_CUDA=1
+
+for k in $(seq 2 8)
+do
+    outfileCPU="output_CPU_${k}.log"
+    outfileGPU="output_GPU_${k}.log"
+    aprun -n $SLURM_JOB_NUM_NODES -N1 ./pararealCPU --gridSize=32 --timeStepsFine=256 --timeStepsCoarse=64 --nu=0.1 --endTime=0.05 --kmax=$k > $outfileCPU 2> /dev/null
+    aprun -n $SLURM_JOB_NUM_NODES -N1 ./pararealGPU --gridSize=32 --timeStepsFine=256 --timeStepsCoarse=64 --nu=0.1 --endTime=0.05 --kmax=$k --noasync > $outfileGPU 2> /dev/null
+    speedCPU=$(sed -rn 's/Speedup: (.*)$/\1/p' < $outfileCPU)
+    speedGPU=$(sed -rn 's/Speedup: (.*)$/\1/p' < $outfileGPU)
+    errorCPU=$(sed -rn 's/Error at end: (.*)$/\1/p' < $outfileCPU)
+    errorGPU=$(sed -rn 's/Error at end: (.*)$/\1/p' < $outfileGPU)
+
+    echo "${k} ${errorCPU} ${speedCPU}"
+    echo "${k} ${errorGPU} ${speedGPU}"
+done
+
+rm Parareal_*.{log,mat}
+

@@ -66,9 +66,9 @@ if( "${CUDA_BACKEND}" STREQUAL "ON" )
 endif()
 
 # Timing
-set (ENABLE_TIMING "ON" CACHE BOOL "Set this on to enable timing measurements, which slow down the solver")
-if (${ENABLE_TIMING})
-    add_definitions ("-DENABLE_TIMING")
+set (ENABLE_INTERNAL_TIMING "ON" CACHE BOOL "Set this on to enable timing measurements, which slow down the solver")
+if (${ENABLE_INTERNAL_TIMING})
+    add_definitions ("-DENABLE_INTERNAL_TIMING")
 endif()
 
 # Error
