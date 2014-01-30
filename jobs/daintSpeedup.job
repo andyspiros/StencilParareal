@@ -1,21 +1,34 @@
 #!/bin/bash -l
 
-export MPICH_RDMA_ENABLED_CUDA=1
+basedir=$(pwd)
 
-for k in $(seq 2 8)
+for executable in pararealCPU pararealGPU
 do
-    outfileCPU="output_CPU_${k}.log"
-    outfileGPU="output_GPU_${k}.log"
-    aprun -n $SLURM_JOB_NUM_NODES -N1 ./pararealCPU --gridSize=32 --timeStepsFine=256 --timeStepsCoarse=64 --nu=0.1 --endTime=0.05 --kmax=$k > $outfileCPU 2> /dev/null
-    aprun -n $SLURM_JOB_NUM_NODES -N1 ./pararealGPU --gridSize=32 --timeStepsFine=256 --timeStepsCoarse=64 --nu=0.1 --endTime=0.05 --kmax=$k --noasync > $outfileGPU 2> /dev/null
-    speedCPU=$(sed -rn 's/Speedup: (.*)$/\1/p' < $outfileCPU)
-    speedGPU=$(sed -rn 's/Speedup: (.*)$/\1/p' < $outfileGPU)
-    errorCPU=$(sed -rn 's/Error at end: (.*)$/\1/p' < $outfileCPU)
-    errorGPU=$(sed -rn 's/Error at end: (.*)$/\1/p' < $outfileGPU)
+    if [ $executable == "pararealGPU" ]
+    then
+        async=--noasync
+        export MPICH_RDMA_ENABLED_CUDA=1
+    else
+        async=
+        export MPICH_RDMA_ENABLED_CUDA=0
+    fi
 
-    echo "${k} ${errorCPU} ${speedCPU}"
-    echo "${k} ${errorGPU} ${speedGPU}"
+    procs=4
+    while [ $procs -le $SLURM_JOB_NUM_NODES ]
+    do
+        for k in 2 3 4
+        do
+            resdir="${basedir}/output_${executable}_${procs}_${k}"
+            mkdir -p $resdir
+            pushd $resdir
+            aprun -N 1 -n $procs "${basedir}/${executable}" --gridSize=32 --timeStepsFine=4096 --timeStepsCoarse=128 --nu=0.1 --endTime=0.10 "--kmax=${k}" $async > output.log
+            s=$(sed -rn 's/Speedup: (.*)$/\1/p' < output.log)
+            m=$(sed -rn 's/Maximal speedup: (.*)$/\1/p' < output.log)
+            e=$(sed -rn 's/Error at end: (.*)$/\1/p' < output.log)
+            printf "%12s    %4d    %1d    %.7e    %.7e    %.7e" $executable $procs $k $s $m $e
+            popd
+        done
+        procs=$(($procs*2))
+    done
 done
-
-rm Parareal_*.{log,mat}
 

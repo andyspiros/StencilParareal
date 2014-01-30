@@ -16,8 +16,7 @@ public:
     double cy() const { return cy_; }
     double cz() const { return cz_; }
     int timeSlices() const { return timeSlices_; }
-    double timeStepsFine() const { return timeStepsFine_; }
-    double timeStepsCoarse() const { return timeStepsCoarse_; }
+    int timeStepsFine() const { return timeStepsFine_; }
     int gridSize() const { return gridSize_; }
     double endTime() const { return endTime_; }
     double kmax() const { return kmax_; }
@@ -62,6 +61,15 @@ public:
     double dtCoarse() const
     {
         return endTime_ / timeStepsCoarse_;
+    }
+
+    int timeStepsFinePerTimeSlice() const {
+        return timeStepsFine_ / timeSlices_;
+    }
+
+    int timeStepsCoarsePerTimeSlice() const
+    { 
+        return timeStepsCoarse_ / timeSlices_;
     }
 
 

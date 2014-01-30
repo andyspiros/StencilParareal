@@ -188,6 +188,9 @@ int main(int argc, char **argv)
     const bool isRoot = commrank == 0;
     const bool isLast = commrank == commsize - 1;
 
+    if (isRoot)
+        std::cout << "Initialization...\n" << std::endl;
+
     RuntimeConfiguration conf(argc, argv);
 
     // Compute my start and end time
@@ -208,8 +211,8 @@ int main(int argc, char **argv)
         << " - CFL coarse: " << conf.cflCoarse() << "\n"
         << " - timestep size fine: " << conf.dtFine() << "\n"
         << " - timestep size coarse: " << conf.dtCoarse() << "\n"
-        << " - timestep fine propagator: " << conf.timeStepsFine() << "\n"
-        << " - timestep coarse propagator: " << conf.timeStepsCoarse() << "\n"
+        << " - timesteps per slice fine propagator: " << conf.timeStepsFinePerTimeSlice() << "\n"
+        << " - timesteps per slice coarse propagator: " << conf.timeStepsCoarsePerTimeSlice() << "\n"
         << " - parareal iterations: " << conf.kmax() << "\n"
         << " - asynchronous communications: " << (conf.async() ? "Enabled" : "Disabled") << "\n"
         << " - intermediate fields in mat files: " << (conf.mat() ? "Yes" : "No") << "\n"
@@ -274,6 +277,25 @@ int main(int argc, char **argv)
     fillQ(qinitial, conf.nu(), conf.cx(), conf.cy(), conf.cz(), 0., 0., 1., 0., 1., 0., 1.); 
     SynchronizeDevice(qinitial);
 
+    // Measure time required by convection
+    double tauF = MPI_Wtime();
+    convection.DoRK4(qinitial, qinitial, conf.dtFine(), conf.timeStepsFinePerTimeSlice());
+    SynchronizeCUDA();
+    tauF = MPI_Wtime() - tauF;
+    double tauG = MPI_Wtime();
+    convection.DoEuler(qinitial, qinitial, conf.dtCoarse(), conf.timeStepsCoarsePerTimeSlice());
+    SynchronizeCUDA();
+    tauG = MPI_Wtime() - tauG;
+
+    const double tauRatio = tauG / tauF;
+    const double Nit_Np = static_cast<double>(conf.kmax()) / commsize;
+    const double maxSpeedup = 1. / (tauRatio * (1. + Nit_Np) + Nit_Np);
+
+    // Fill again initial solution
+    SynchronizeHost(qinitial);
+    fillQ(qinitial, conf.nu(), conf.cx(), conf.cy(), conf.cz(), 0., 0., 1., 0., 1., 0., 1.); 
+    SynchronizeDevice(qinitial);
+
     // Prepare MPI objects
     MPI_Request reqSend, reqRecv;
     MPI_Status status;
@@ -294,13 +316,10 @@ int main(int argc, char **argv)
      **********************************/
 
     // Compute reference solution
-    logfile << " - Computing reference solution" << std::endl;
     double eserial = MPI_Wtime();
-    convection.DoRK4(qinitial, qreference, conf.dtFine(), (commrank+1)*conf.timeStepsFine());
+    convection.DoRK4(qinitial, qreference, conf.dtFine(), (commrank+1)*conf.timeStepsFinePerTimeSlice());
     SynchronizeCUDA();
     eserial = MPI_Wtime() - eserial;
-    logfile << " - Reference solution computed\n" << std::endl;
-    convection.DoRK4(qinitial, qfine, conf.dtFine(), 1);
     matfile.addField(qreference);
     MPI_Barrier(MPI_COMM_WORLD);
 
@@ -310,8 +329,8 @@ int main(int argc, char **argv)
     /*
      * Part 1: initialization
      */
-    convection.DoEuler(qinitial, qinitial, conf.dtCoarse(), conf.timeStepsCoarse()*commrank);
-    convection.DoEuler(qinitial, qcoarseold, conf.dtCoarse(), conf.timeStepsCoarse());
+    convection.DoEuler(qinitial, qinitial, conf.dtCoarse(), conf.timeStepsCoarsePerTimeSlice()*commrank);
+    convection.DoEuler(qinitial, qcoarseold, conf.dtCoarse(), conf.timeStepsCoarsePerTimeSlice());
 
     convection.DoRK4(qinitial, qfine, conf.dtFine(), 1);
 
@@ -329,8 +348,6 @@ int main(int argc, char **argv)
     // Begin iteration
     for (int k = 0; k < conf.kmax(); ++k)
     {
-        logfile << "Begin iteration " << k << "\n";
-
         /*
          * Part 2: fine integration
          */
@@ -343,7 +360,7 @@ int main(int argc, char **argv)
             MPI_Irecv(pRecv, dataSize, MPI_DOUBLE, commrank-1, k, MPI_COMM_WORLD, &reqRecv);
 
         // Remaining steps of fine propagation
-        convection.DoRK4(qfine, qfine, conf.dtFine(), conf.timeStepsFine()-1);
+        convection.DoRK4(qfine, qfine, conf.dtFine(), conf.timeStepsFinePerTimeSlice()-1);
 
         // Serialize
         if (conf.mat())
@@ -377,7 +394,7 @@ int main(int argc, char **argv)
 #endif
 
         // Coarse propagation
-        convection.DoEuler(qinitial, qcoarsenew, conf.dtCoarse(), conf.timeStepsCoarse());
+        convection.DoEuler(qinitial, qcoarsenew, conf.dtCoarse(), conf.timeStepsCoarsePerTimeSlice());
 
         if (conf.mat())
             matfile.addField(qcoarsenew, k);
@@ -509,8 +526,10 @@ int main(int argc, char **argv)
     if (isLast)
     {
         double e = computeErrorReference(q, qreference);
-        std::cout << std::endl << "Error at end: " << e << std::endl;
-        std::cout << "Speedup: " << eserial / eparareal << std::endl;
+        std::cout << "\n"
+                  << "Error at end: " << e << "\n"
+                  << "Speedup: " << eserial / eparareal << "\n"
+                  << "Maximal speedup: " << maxSpeedup << std::endl;
     }
 
     // Closing log file

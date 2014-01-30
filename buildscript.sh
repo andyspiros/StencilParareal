@@ -58,8 +58,12 @@ module load cmake
 # Boost
 if [[ $machine == "todi" ]]
 then
+    echo "This is todi"
     module load boost/1.51.0
-# TODO: Go on with other machines
+elif [[ $machine == "daint" ]]
+then
+    echo "This is daint"
+    export BOOST_ROOT=/apps/daint/boost/1.54.0/gnu_473
 fi
 
 # CUDA

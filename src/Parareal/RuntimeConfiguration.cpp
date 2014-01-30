@@ -11,6 +11,10 @@ RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
     // Retrieve MPI information
     MPI_Comm_size(MPI_COMM_WORLD, &timeSlices_);
 
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    const bool isRoot = !rank;
+
     // Create description of allowed options
     namespace po = boost::program_options;
     po::options_description desc("Allowed options");
@@ -22,8 +26,8 @@ RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
         ("cz", po::value<double>(), "Advection velocity in z direction")
         ("gridSize", po::value<int>(), "Number of grid points along each direction")
         ("endTime", po::value<double>(), "Time to simulate")
-        ("timeStepsFine", po::value<int>(), "Number of fine timesteps per timeslice")
-        ("timeStepsCoarse", po::value<int>(), "Number of coarse timesteps per timeslice")
+        ("timeStepsFine", po::value<int>(), "Total number of fine timesteps")
+        ("timeStepsCoarse", po::value<int>(), "Total number of coarse timesteps")
         ("kmax", po::value<int>(), "Number of parareal iterations")
         ("mat", "Serialize intermediate fields")
         ("noasync", "Avoid asynchronous communication")
@@ -94,6 +98,26 @@ RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
     if (vm.count("noasync"))
     {
         this->set_async(false);
+    }
+
+    if (timeStepsFine_ % timeSlices_ != 0)
+    {
+        timeStepsFine_ = (timeStepsFine_ / timeSlices_ + 1) * timeSlices_;
+        if (isRoot)
+        {
+            std::cout << "Warning: timeStepsFine is not a multiple of timeSlices\n"
+                << " -- Changing timeStepsFine to " << timeStepsFine_ << "\n";
+        }
+    }
+
+    if (timeStepsCoarse_ % timeSlices_ != 0)
+    {
+        timeStepsCoarse_ = (timeStepsCoarse_ / timeSlices_ + 1) * timeSlices_;
+        if (isRoot)
+        {
+            std::cout << "Warning: timeStepsCoarse is not a multiple of timeSlices\n"
+                << " -- Changing timeStepsCoarse to " << timeStepsCoarse_ << "\n\n";
+        }
     }
 }
 

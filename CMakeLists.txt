@@ -9,6 +9,7 @@ include_directories("src/Convection")
 include_directories("src/Parareal")
 
 # Boost
+set(Boost_USE_STATIC_LIBS ON)
 find_package (Boost 1.48.0 REQUIRED COMPONENTS program_options)
 if (Boost_FOUND)
     include_directories(${Boost_INCLUDE_DIRS})
@@ -20,7 +21,7 @@ set (CUDA_BACKEND "OFF" CACHE BOOL "Whether to use CUDA or not")
 if ("${CUDA_BACKEND}")
     find_package(CUDA 5.0 REQUIRED)
     add_definitions( -D__CUDA_BACKEND__ )
-    set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -arch=sm_21) # -Xptxas -abi=no
+    set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -arch=sm_35) # -Xptxas -abi=no
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D_GCL_GPU_")
 else()
     # OpenMP
@@ -66,13 +67,13 @@ if( "${CUDA_BACKEND}" STREQUAL "ON" )
 endif()
 
 # Timing
-set (ENABLE_INTERNAL_TIMING "ON" CACHE BOOL "Set this on to enable timing measurements, which slow down the solver")
+set (ENABLE_INTERNAL_TIMING "OFF" CACHE BOOL "Set this on to enable timing measurements, which slow down the solver")
 if (${ENABLE_INTERNAL_TIMING})
     add_definitions ("-DENABLE_INTERNAL_TIMING")
 endif()
 
 # Error
-set (ENABLE_ERROR "ON" CACHE BOOL "Set this on to enable computation of the error after every iteration")
+set (ENABLE_ERROR "OFF" CACHE BOOL "Set this on to enable computation of the error after every iteration")
 if (${ENABLE_ERROR})
     add_definitions ("-DENABLE_ERROR")
 endif()
@@ -97,6 +98,14 @@ if ("${UPWINDADVECTION}")
     add_definitions("-DUPWINDADVECTION")
 endif("${UPWINDADVECTION}")
 
+#########
+# Tests #
+#########
+
+if (${CUDA_BACKEND})
+    cuda_add_executable(startConvectionGPU "tests/startConvectionGPU.cu" "src/Convection/Convection.cu")
+    target_link_libraries (startConvectionGPU communication "${SHARED_INFRASTRUCTURE_LIB}" )
+endif()
 
 ###############
 # Executables #
