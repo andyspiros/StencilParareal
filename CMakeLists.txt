@@ -126,17 +126,11 @@ endif()
 #target_link_libraries (heat gcl "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
 
 
-# Create executable convection
-set (CONVECTIONSOURCES
-    "src/Convection/main.cpp"
-)
-
+# Convection executable
 if (${CUDA_BACKEND})
-    cuda_add_executable (convection ${CONVECTIONSOURCES} "src/Convection/Convection.cu")
-    cuda_add_executable (sendrecv "src/Communication/SendRecvtest.cu")
+    cuda_add_executable (convection "src/Convection/main.cpp" "src/Convection/Convection.cu")
 else()
-    add_executable (convection ${CONVECTIONSOURCES} "src/Convection/Convection.cpp")
-    add_executable (sendrecv "src/Communication/SendRecvtest.cpp")
+    add_executable (convection "src/Convection/main.cpp" "src/Convection/Convection.cpp")
 endif()
 
 target_link_libraries (convection gcl communication matfile "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
@@ -154,9 +148,9 @@ set (PARAREAL_SOURCES
 )
 
 if (${CUDA_BACKEND})
-    cuda_add_executable(parareal "src/Parareal/main.cu" "src/Convection/Convection.cu" "${PARAREAL_SOURCES}")
+    cuda_add_executable(parareal "src/Parareal/newmain.cu" "src/Convection/Convection.cu" "${PARAREAL_SOURCES}")
 else()
-    add_executable(parareal "src/Parareal/main.cpp" "src/Convection/Convection.cpp" "${PARAREAL_SOURCES}")
+    add_executable(parareal "src/Parareal/newmain.cpp" "src/Convection/Convection.cpp" "${PARAREAL_SOURCES}")
 endif()
 target_link_libraries (parareal matfile communication "${SHARED_INFRASTRUCTURE_LIB}" "${Boost_LIBRARIES}")
 

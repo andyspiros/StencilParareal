@@ -5,6 +5,11 @@
 #include <cstdlib>
 #include <cmath>
 
+enum RunMode
+{
+    ModeCompare, ModeSerial, ModeParallel
+};
+
 class RuntimeConfiguration
 {
 public:
@@ -22,6 +27,7 @@ public:
     double kmax() const { return kmax_; }
     bool mat() const { return mat_; }
     bool async() const {  return async_; }
+    RunMode mode() const { return mode_; }
 
     // Setters
     void set_nu(double x) { nu_ = x; }
@@ -35,6 +41,7 @@ public:
     void set_kmax(int x) { kmax_ = x; }
     void set_mat(bool x) { mat_ = x; }
     void set_async(bool x) { async_ = x; }
+    void set_mode(RunMode x) { mode_ = x; }
 
 
     // Non-stored info
@@ -68,7 +75,7 @@ public:
     }
 
     int timeStepsCoarsePerTimeSlice() const
-    { 
+    {
         return timeStepsCoarse_ / timeSlices_;
     }
 
@@ -110,6 +117,7 @@ private:
     int kmax_;
     bool mat_;
     bool async_;
+    RunMode mode_;
 };
 
 #endif // RUNTIMECONFIGURATION_H_

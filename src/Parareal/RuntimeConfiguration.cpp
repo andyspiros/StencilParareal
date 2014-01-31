@@ -1,12 +1,15 @@
 #include "RuntimeConfiguration.h"
 #include "boost/program_options.hpp"
 #include "mpi.h"
+#include <string>
+#include <algorithm>
 
 RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
     : nu_(1.), cx_(1.), cy_(1.), cz_(1.)
     , gridSize_(32), endTime_(0.05)
     , timeStepsFine_(128), timeStepsCoarse_(32)
     , kmax_(5), mat_(false), async_(true)
+    , mode_(ModeCompare)
 {
     // Retrieve MPI information
     MPI_Comm_size(MPI_COMM_WORLD, &timeSlices_);
@@ -31,6 +34,7 @@ RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
         ("kmax", po::value<int>(), "Number of parareal iterations")
         ("mat", "Serialize intermediate fields")
         ("noasync", "Avoid asynchronous communication")
+        ("mode", po::value<std::string>(), "Select among Compare, Serial and Parallel")
         ;
 
     po::variables_map vm;
@@ -98,6 +102,24 @@ RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
     if (vm.count("noasync"))
     {
         this->set_async(false);
+    }
+
+    if (vm.count("mode"))
+    {
+        std::string opt = vm["mode"].as<std::string>();
+        std::transform(opt.begin(), opt.end(), opt.begin(), ::tolower);
+        if (opt == "compare")
+            this->set_mode(ModeCompare);
+        else if (opt == "parallel")
+            this->set_mode(ModeParallel);
+        else if (opt == "serial")
+            this->set_mode(ModeSerial);
+        else
+        {
+            std::cerr << "Mode " << vm["mode"].as<std::string>() << " not recognized.\n"
+                << "Defaulting to Compare\n";
+            this->set_mode(ModeCompare);
+        }
     }
 
     if (timeStepsFine_ % timeSlices_ != 0)

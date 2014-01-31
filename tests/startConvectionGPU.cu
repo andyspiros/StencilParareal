@@ -1,3 +1,4 @@
+#define __CUDA_BACKEND__
 #include "Convection.h"
 #include "mpi.h"
 #include <iostream>
@@ -25,7 +26,7 @@ int main(int argc, char **argv)
         convection.DoRK4(qin, qout, 0.001, i);
         e = MPI_Wtime() - e;
         std::cout << std::setw(4) << i;
-        std::cout << "      " << std::setprecision(7) << e << "\n";
+        std::cout << "      " << std::fixed << std::setprecision(7) << e << "\n";
     }
 
     // Euler
@@ -39,5 +40,7 @@ int main(int argc, char **argv)
         std::cout << "      " << std::fixed << std::setprecision(7) << e << "\n";
     }
 
+    cudaDeviceReset();
     MPI_Finalize();
 }
+

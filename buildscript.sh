@@ -58,11 +58,9 @@ module load cmake
 # Boost
 if [[ $machine == "todi" ]]
 then
-    echo "This is todi"
     module load boost/1.51.0
 elif [[ $machine == "daint" ]]
 then
-    echo "This is daint"
     export BOOST_ROOT=/apps/daint/boost/1.54.0/gnu_473
 fi
 
@@ -81,13 +79,16 @@ fi
 # STELLA
 CMAKEARGS+="-DSTELLA_PATH=${STELLADIR}  "
 
-
-# Call cmake
+# Enter directory
 mkdir -p $BUILDDIR
 cd $BUILDDIR
-echo "Calling cmake $BASEDIR $CMAKEARGS" 
 
-cmake "${BASEDIR}" $CMAKEARGS
+# Call cmake
+if [[ ! -a CMakeCache.txt ]]
+then
+    echo "Calling cmake $BASEDIR $CMAKEARGS" 
+    cmake "${BASEDIR}" $CMAKEARGS
+fi
 
 if [[ $? -gt 0 ]]
 then
@@ -95,6 +96,7 @@ then
     exit 2
 fi
 
+# Build
 make -j8
 if [[ $? -gt 0 ]]
 then
