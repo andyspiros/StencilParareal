@@ -2,6 +2,17 @@
 
 basedir=$(pwd)
 
+# Check directory of executables
+if [ -z "$1" ]
+then
+    exedir=$basedir
+else
+    exedir=$(readlink -en $1)
+fi
+
+echo " Executable       procs     kmax       Speedup         Max. speedup      Relative error     Serial runtime     Parallel runtime   Energy serial   Energey parallel"
+echo
+
 for executable in pararealCPU pararealGPU
 do
     if [ $executable == "pararealGPU" ]
@@ -11,7 +22,13 @@ do
     else
         async=
         export MPICH_RDMA_ENABLED_CUDA=0
+        if [[ -z ${OMP_NUM_THREADS} ]]
+        then
+            export OMP_NUM_THREADS=8
+        fi
     fi
+
+    exe="${exedir}/${executable}"
 
     procs=4
     while [ $procs -le $SLURM_JOB_NUM_NODES ]
@@ -20,13 +37,32 @@ do
         do
             resdir="${basedir}/output_${executable}_${procs}_${k}"
             mkdir -p $resdir
-            pushd $resdir
-            aprun -N 1 -n $procs "${basedir}/${executable}" --gridSize=32 --timeStepsFine=4096 --timeStepsCoarse=128 --nu=0.1 --endTime=0.10 "--kmax=${k}" $async > output.log
-            s=$(sed -rn 's/Speedup: (.*)$/\1/p' < output.log)
-            m=$(sed -rn 's/Maximal speedup: (.*)$/\1/p' < output.log)
-            e=$(sed -rn 's/Error at end: (.*)$/\1/p' < output.log)
-            printf "%12s    %4d    %1d    %.7e    %.7e    %.7e" $executable $procs $k $s $m $e
-            popd
+            pushd $resdir > /dev/null
+
+            # Run application parallel
+            aprun -N 1 -n $procs "${exe}" --gridSize=32 --timeStepsFine=4096 --timeStepsCoarse=128 --nu=0.1 --endTime=0.10 --mode=parallel "--kmax=${k}" $async > outputParallel.log
+            apid=$(sed -rn 's/^Application ([0-9]*).*/\1/p' < outputParallel.log)
+            parallel=$(sed -rn 's/Parallel run time: ([0-9]*)/\1/p' < outputParallel.log)
+            sleep 4
+            energyParallel=$(sed -rn "s/.*apid: ${apid}.*\['energy_used', ([0-9]*)\]/\1/p" < "/scratch/daint/RUR/rur-$(date +%Y%m%d)")
+
+            # Run application serial
+            aprun -N 1 -n 1 "${exe}" --gridSize=32 --timeStepsFine=4096 --nu=0.1 --endTime=0.10 --mode=serial "--kmax=${k}" $async > outputSerial.log
+            apid=$(sed -rn 's/^Application ([0-9]*).*/\1/p' < outputSerial.log)
+            serial=$(sed -rn 's/Serial run time: ([0-9]*)/\1/p' < outputSerial.log)
+            sleep 4
+            energySerial=$(sed -rn "s/.*apid: ${apid}.*\['energy_used', ([0-9]*)\]/\1/p" < "/scratch/daint/RUR/rur-$(date +%Y%m%d)")
+
+            # Run application compare
+            aprun -N 1 -n $procs "${exe}" --gridSize=32 --timeStepsFine=4096 --timeStepsCoarse=128 --nu=0.1 --endTime=0.10 --mode=compare "--kmax=${k}" $async > outputCompare.log
+            speedup=$(sed -rn 's/Speedup: ([0-9]*)/\1/p' < outputCompare.log)
+            maxspeedup=$(sed -rn 's/Maximal speedup: ([0-9]*)/\1/p' < outputCompare.log)
+            error=$(sed -rn 's/Error at end: ([0-9]*)/\1/p' < outputCompare.log)
+
+            # Print data
+            printf "%12s      %4d      %2d      %.7e      %.7e      %.7e      %.7e      %.7e      %.7e      %.7e\n" $executable $procs $k $speedup $maxspeedup $error $serial $parallel $energySerial $energyParallel
+
+            popd > /dev/null
         done
         procs=$(($procs*2))
     done
