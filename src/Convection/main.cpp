@@ -5,16 +5,19 @@
 #include "boost/program_options.hpp"
 
 #include "Convection.h"
+#include "ConvectionSolution.h"
 #include "MatFile.h"
-#include "HaloExchange3D.h"
+//#include "HaloExchange3D.h"
 
-#include "GCL.h"
-#include "utils/layout_map.h"
-#include "utils/boollist.h"
-#include "L2/include/halo_exchange.h"
-#include "L2/include/descriptors.h"
-#include "L3/include/proc_grids_3D.h"
-#include "L3/include/Halo_Exchange_3D.h"
+//#include "GCL.h"
+//#include "utils/layout_map.h"
+//#include "utils/boollist.h"
+//#include "L2/include/halo_exchange.h"
+//#include "L2/include/descriptors.h"
+//#include "L3/include/proc_grids_3D.h"
+//#include "L3/include/Halo_Exchange_3D.h"
+
+#include "mpi.h"
 
 #ifndef __CUDA_BACKEND__
 # include <omp.h>
@@ -57,96 +60,10 @@ void computeLocalSizes(int globalSize, int nprocs,
     }
 }
 
-inline double exactQ(double nu, double cx, double cy, double cz,
-                     double x, double y, double z, double t)
-{
-    const double pi = 3.14159265358979;
-    return sin(2.*pi*(x-cx*t))*sin(2.*pi*(y-cy*t))*sin(2.*pi*(z-cz*t)) * exp(-12.*pi*pi*nu*t);
-}
-
-void fillQ(ConvectionField& q,
-                double nu, double cx, double cy, double cz,
-                double t,
-                double xstart, double xend,
-                double ystart, double yend,
-                double zstart, double zend
-            )
-{
-    IJKSize domain = q.calculationDomain();
-    const int iSize = domain.iSize();
-    const int jSize = domain.jSize();
-    const int kSize = domain.kSize();
-
-    const double dxhalf = (xend-xstart)/iSize / 2.;
-    const double dyhalf = (yend-ystart)/jSize / 2.;
-    const double dzhalf = (zend-zstart)/kSize / 2.;
-
-    double x, y, z;
-
-    for (int i = 0; i < iSize; ++i)
-        for (int j = 0; j < jSize; ++j)
-            for (int k = 0; k < kSize; ++k)
-            {
-                x = xstart + (2*i+1)*dxhalf;
-                y = ystart + (2*j+1)*dyhalf;
-                z = zstart + (2*k+1)*dzhalf;
-                q(i, j, k) = exactQ(nu, cx, cy, cz, x, y, z, t);
-            }
-}
-
-template<typename TDataField>
-double computeError(const TDataField& q,
-                double nu, double cx, double cy, double cz,
-                double t,
-                double xstart, double xend,
-                double ystart, double yend,
-                double zstart, double zend,
-                double& exact_inf, double &error_inf,
-                TDataField* errfield=0
-            )
-{
-    IJKSize domain = q.calculationDomain();
-    const int iSize = domain.iSize();
-    const int jSize = domain.jSize();
-    const int kSize = domain.kSize();
-
-    const double dxhalf = (xend-xstart)/iSize / 2.;
-    const double dyhalf = (yend-ystart)/jSize / 2.;
-    const double dzhalf = (zend-zstart)/kSize / 2.;
-
-    double x, y, z;
-
-    error_inf = 0.;
-    exact_inf = 0.;
-    double exact, e;
-
-    for (int i = 0; i < iSize; ++i)
-        for (int j = 0; j < jSize; ++j)
-            for (int k = 0; k < kSize; ++k)
-            {
-                // Coordinates
-                x = xstart + (2*i+1)*dxhalf;
-                y = ystart + (2*j+1)*dyhalf;
-                z = zstart + (2*k+1)*dzhalf;
-
-                // Exact solution
-                exact = exactQ(nu, cx, cy, cz, x, y, z, t);
-                exact_inf = std::max(std::abs(exact), exact_inf);
-
-                // Error
-                e = q(i,j,k) - exact;
-                error_inf = std::max(std::abs(e), error_inf);
-
-                // Error field
-                if (errfield)
-                    (*errfield)(i, j, k) = e;
-            }
-    return error_inf / exact_inf;
-}
 
 struct HeatConfiguration
 {
-    double nu;
+    double nu0, nufreq;
     double cx, cy, cz;
     int gridsize;
     int timesteps;
@@ -161,7 +78,8 @@ struct HeatConfiguration
 HeatConfiguration parseCommandLine(int argc, char **argv)
 {
     HeatConfiguration conf;
-    conf.nu = 1.;
+    conf.nu0 = 1.;
+    conf.nufreq = 0.;
     conf.cx = 1.;
     conf.cy = 1.;
     conf.cz = 1.;
@@ -176,7 +94,8 @@ HeatConfiguration parseCommandLine(int argc, char **argv)
     po::options_description desc("Allowed options");
     desc.add_options()
         ("help", "Produce this help message")
-        ("nu", po::value<double>(), "Heat coefficient")
+        ("nu0", po::value<double>(), "Initial diffusion coefficient")
+        ("nufreq", po::value<double>(), "Frequency of diffusion coefficient")
         ("cx", po::value<double>(), "Advection velocity in x direction")
         ("cy", po::value<double>(), "Advection velocity in y direction")
         ("cz", po::value<double>(), "Advection velocity in z direction")
@@ -216,9 +135,14 @@ HeatConfiguration parseCommandLine(int argc, char **argv)
     else
         conf.rk = true;
 
-    if (vm.count("nu"))
+    if (vm.count("nu0"))
     {
-        conf.nu = vm["nu"].as<double>();
+        conf.nu0 = vm["nu0"].as<double>();
+    }
+
+    if (vm.count("nufreq"))
+    {
+        conf.nufreq = vm["nufreq"].as<double>();
     }
 
     if (vm.count("cx"))
@@ -268,22 +192,22 @@ HeatConfiguration parseCommandLine(int argc, char **argv)
         double cfl = vm["cfl"].as<double>();
         if (gridsizeSet)
         {
-            double dt = conf.dx*conf.dx * cfl / conf.nu;
+            double dt = conf.dx*conf.dx * cfl / (3./2.*conf.nu0);
             conf.timesteps = conf.endtime / dt + .5;
             conf.dt = conf.endtime / conf.timesteps;
-            conf.cfl = conf.dt * conf.nu / (conf.dx*conf.dx);
+            conf.cfl = conf.dt * 3./2.*conf.nu0 / (conf.dx*conf.dx);
         }
         else // Also apply if nothing else is specified
         {
-            double dx = std::sqrt(conf.dt * conf.nu / cfl);
+            double dx = std::sqrt(conf.dt * conf.nu0 / cfl);
             conf.gridsize = 1. / dx + .5;
             conf.dx = 1. / conf.gridsize;
-            conf.cfl = conf.dt * conf.nu / (conf.dx*conf.dx);
+            conf.cfl = conf.dt * 3./2.*conf.nu0 / (conf.dx*conf.dx);
         }
     }
 
     // Compute the CFL in any case
-    conf.cfl = conf.dt * conf.nu / (conf.dx * conf.dx);
+    conf.cfl = conf.dt * 3./2.*conf.nu0 / (conf.dx * conf.dx);
 
     return conf;
 }
@@ -294,20 +218,20 @@ int main(int argc, char **argv)
     HeatConfiguration conf = parseCommandLine(argc, argv);
 
     // Initialize GCL
-    GCL::GCL_Init();
-    typedef GCL::gcl_utils::boollist<3> CyclicType;
-    typedef GCL::MPI_3D_process_grid_t<CyclicType> GridType;
-    const bool isRoot = GCL::PID == 0;
+    //GCL::GCL_Init();
+    //typedef GCL::gcl_utils::boollist<3> CyclicType;
+    //typedef GCL::MPI_3D_process_grid_t<CyclicType> GridType;
+    const bool isRoot = 1;
 
     // Initialize grid
-    int commsize;
-    MPI_Comm_size(MPI_COMM_WORLD, &commsize);
+    int commsize = 1;
+    //MPI_Comm_size(MPI_COMM_WORLD, &commsize);
 
-    int dims[3] = {0, 0, 0};
+    int dims[3] = {1, 1, 1};
     int periods[3] = {1, 1, 1};
-    MPI_Dims_create(GCL::PROCS, 3, dims);
-    MPI_Comm comm;
-    MPI_Cart_create(MPI_COMM_WORLD, 3, dims, periods, 0, &comm);
+    //MPI_Dims_create(GCL::PROCS, 3, dims);
+    //MPI_Comm comm;
+    //MPI_Cart_create(MPI_COMM_WORLD, 3, dims, periods, 0, &comm);
 
     std::vector<int> localSizesI, localSizesJ, localSizesK;
     std::vector<double> xstarts, xends, ystarts, yends, zstarts, zends;
@@ -317,9 +241,9 @@ int main(int argc, char **argv)
 
 
     // Get position on grid
-    GridType grid(CyclicType(true, true, true), comm);
-    int myPI, myPJ, myPK;
-    grid.coords(myPI, myPJ, myPK);
+    //GridType grid(CyclicType(true, true, true), comm);
+    int myPI = 0, myPJ = 0, myPK = 0;
+    //grid.coords(myPI, myPJ, myPK);
 
     // Owned physical space
     const double Dx = 1. / dims[0];
@@ -341,7 +265,8 @@ int main(int argc, char **argv)
             << " - timestep size: " << conf.dt << "\n"
             << " - timesteps: " << conf.timesteps << "\n"
             << " - endtime: " << conf.endtime << "\n"
-            << " - heat coefficient: " << conf.nu << "\n"
+            << " - initial diffusion coefficient: " << conf.nu0 << "\n"
+            << " - frequency of diffusion coefficient: " << conf.nufreq << "\n"
             << " - advection velocity in x: " << conf.cx << "\n"
             << " - advection velocity in y: " << conf.cy << "\n"
             << " - advection velocity in z: " << conf.cz << "\n"
@@ -350,10 +275,10 @@ int main(int argc, char **argv)
             << "\n";
 
         std::cout << "Spatial configuration:\n";
-        for (int p = 0; p < GCL::PROCS; ++p)
+        for (int p = 0; p < 1; ++p)
         {
-            int coords[3];
-            MPI_Cart_coords(comm, p, 3, coords);
+            int coords[3] = {0, 0, 0};
+            //MPI_Cart_coords(comm, p, 3, coords);
             std::cout << " - Process " << p << " is "
                 << "(" << coords[0] << ", " << coords[1] << ", " << coords[2] << ")\n"
                 << "   -- Local grid: " << localSizesI[coords[0]] << "x"
@@ -378,7 +303,7 @@ int main(int argc, char **argv)
     exactfield.Init("exact", calculationDomain, kboundary);
 
     // Initialize content of q
-    fillQ(qIn, conf.nu, conf.cx, conf.cy, conf.cz, 0., xstart, xend, ystart, yend, zstart, zend);
+    fillQ(qIn, conf.nu0, conf.nufreq, conf.cx, conf.cy, conf.cz, 0., xstart, xend, ystart, yend, zstart, zend);
 #ifdef __CUDA_BACKEND__
     qIn.SynchronizeDeviceStorage();
     qOut.SynchronizeDeviceStorage();
@@ -388,7 +313,7 @@ int main(int argc, char **argv)
     initmat.close();
 
     // Initialize stencil
-    Convection convection(localSizesI[myPI], localSizesJ[myPJ], localSizesK[myPK], conf.dx, conf.nu, conf.cx, conf.cy, conf.cz);
+    Convection convection(localSizesI[myPI], localSizesJ[myPJ], localSizesK[myPK], conf.dx, conf.nu0, conf.nufreq, conf.cx, conf.cy, conf.cz);
 
     // Initialize MAT file
     MatFile *mat;
@@ -417,9 +342,9 @@ int main(int argc, char **argv)
     //e = MPI_Wtime() - e;
     double e = MPI_Wtime();
     if (conf.rk)
-        convection.DoRK4(qIn, qOut, conf.dt, conf.timesteps);
+        convection.DoRK4(qIn, qOut, 0., conf.dt, conf.timesteps);
     else
-        convection.DoEuler(qIn, qOut, conf.dt, conf.timesteps);
+        convection.DoEuler(qIn, qOut, 0., conf.dt, conf.timesteps);
     e = MPI_Wtime() - e;
 
     // Close MAT file
@@ -431,11 +356,13 @@ int main(int argc, char **argv)
 
     // Compute error
     double infAtEnd[2];
-    double errorAtEnd = computeError(qOut, conf.nu, conf.cx, conf.cy, conf.cz, conf.endtime,
+    double errorAtEnd = computeError(qOut, conf.nu0, conf.nufreq, conf.cx, conf.cy, conf.cz, conf.endtime,
                                      xstart, xend, ystart, yend,
                                      zstart, zend, infAtEnd[0], infAtEnd[1], &errfield);
-    std::vector<double> infsAtEnd(2*GCL::PROCS);
+    std::vector<double> infsAtEnd(2);
     MPI_Gather(infAtEnd, 2, MPI_DOUBLE, &infsAtEnd[0], 2, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    infsAtEnd[0] = infAtEnd[0];
+    infsAtEnd[1] = infAtEnd[1];
 
     if (isRoot)
     {
@@ -450,7 +377,7 @@ int main(int argc, char **argv)
         std::cout << "Errors on all processes:\n";
         double totExactInf = 0.;
         double totErrorInf = 0.;
-        for (int p = 0; p < GCL::PROCS; ++p)
+        for (int p = 0; p < 1; ++p)
         {
             totExactInf = std::max(totExactInf, infsAtEnd[2*p]);
             totErrorInf = std::max(totErrorInf, infsAtEnd[2*p+1]);
@@ -461,7 +388,7 @@ int main(int argc, char **argv)
             << totErrorInf/totExactInf << "\n";
     }
 
-    fillQ(exactfield, conf.nu, conf.cx, conf.cy, conf.cz, conf.endtime, xstart, xend, ystart, yend, zstart, zend);
+    fillQ(exactfield, conf.nu0, conf.nufreq, conf.cx, conf.cy, conf.cz, conf.endtime, xstart, xend, ystart, yend, zstart, zend);
 
     std::ostringstream fnameResult;
     fnameResult << "result_" << myPI << "_" << myPJ << "_" << myPK << ".mat";
@@ -473,6 +400,6 @@ int main(int argc, char **argv)
     matfile.addField(exactfield, -1);
 
     // Finalize GCL
-    GCL::GCL_Finalize();
+    MPI_Finalize();
 }
 

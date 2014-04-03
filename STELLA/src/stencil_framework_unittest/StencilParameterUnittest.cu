@@ -1,0 +1,2 @@
+#include "StencilParameterUnittest.cpp"
+

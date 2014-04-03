@@ -7,7 +7,7 @@
 
 enum RunMode
 {
-    ModeCompare, ModeSerial, ModeParallel
+    ModeCompare, ModeSerial, ModeParallel, ModeTiming
 };
 
 class RuntimeConfiguration
@@ -16,7 +16,8 @@ public:
     RuntimeConfiguration(int argc, char **argv);
 
     // Getters
-    double nu() const { return nu_; }
+    double nu0() const { return nu0_; }
+    double nufreq() const { return nufreq_; }
     double cx() const { return cx_; }
     double cy() const { return cy_; }
     double cz() const { return cz_; }
@@ -30,7 +31,8 @@ public:
     RunMode mode() const { return mode_; }
 
     // Setters
-    void set_nu(double x) { nu_ = x; }
+    void set_nu0(double x) { nu0_ = x; }
+    void set_nufreq(double x) { nufreq_ = x; }
     void set_cx(double x) { cx_ = x; }
     void set_cy(double x) { cy_ = x; }
     void set_cz(double x) { cz_ = x; }
@@ -105,10 +107,10 @@ private:
         const double c = std::max(std::max(cx_, cy_), cz_);
         const double dt_dx = dt / dx();
         const double dt_dx2 = dt_dx / dx();
-        return std::max(nu_*dt_dx2, c*dt_dx);
+        return std::max(3./2.*nu0_*dt_dx2, c*dt_dx);
     }
 
-    double nu_;
+    double nu0_, nufreq_;
     double cx_, cy_, cz_;
     int gridSize_;
     double endTime_;

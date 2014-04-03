@@ -5,17 +5,18 @@
 #include "SharedInfrastructure.h"
 
 
-inline double exactQ(double nu, double cx, double cy, double cz,
+inline double exactQ(double nu0, double nufreq, double cx, double cy, double cz,
                      double x, double y, double z, double t)
 {
     const double pi = 3.14159265358979;
-    return sin(2.*pi*(x-cx*t))*sin(2.*pi*(y-cy*t))*sin(2.*pi*(z-cz*t)) * exp(-12.*pi*pi*nu*t);
+    const double a = nu0 * t - (nu0 / (2.*nufreq)) * (std::cos(nufreq*t)-1.);
+    return sin(2.*pi*(x-cx*t))*sin(2.*pi*(y-cy*t))*sin(2.*pi*(z-cz*t)) * exp(-12.*pi*pi*a);
 }
 
 
 template<typename TDataField>
 void fillQ(TDataField& q,
-           double nu, double cx, double cy, double cz,
+           double nu0, double nufreq, double cx, double cy, double cz,
            double t,
            double xstart, double xend,
            double ystart, double yend,
@@ -40,14 +41,14 @@ void fillQ(TDataField& q,
                 x = xstart + (2*i+1)*dxhalf;
                 y = ystart + (2*j+1)*dyhalf;
                 z = zstart + (2*k+1)*dzhalf;
-                q(i, j, k) = exactQ(nu, cx, cy, cz, x, y, z, t);
+                q(i, j, k) = exactQ(nu0, nufreq, cx, cy, cz, x, y, z, t);
             }
 }
 
 
 template<typename TDataField>
 double computeError(const TDataField& q,
-                double nu, double cx, double cy, double cz,
+                double nu0, double nufreq, double cx, double cy, double cz,
                 double t,
                 double xstart, double xend,
                 double ystart, double yend,
@@ -81,7 +82,7 @@ double computeError(const TDataField& q,
                 z = zstart + (2*k+1)*dzhalf;
 
                 // Exact solution
-                exact = exactQ(nu, cx, cy, cz, x, y, z, t);
+                exact = exactQ(nu0, nufreq, cx, cy, cz, x, y, z, t);
                 exact_inf = std::max(std::abs(exact), exact_inf);
 
                 // Error

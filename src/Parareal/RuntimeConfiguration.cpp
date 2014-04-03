@@ -5,7 +5,7 @@
 #include <algorithm>
 
 RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
-    : nu_(1.), cx_(1.), cy_(1.), cz_(1.)
+    : nu0_(1.), nufreq_(0.), cx_(1.), cy_(1.), cz_(1.)
     , gridSize_(32), endTime_(0.05)
     , timeStepsFine_(128), timeStepsCoarse_(32)
     , kmax_(5), mat_(false), async_(true)
@@ -23,7 +23,8 @@ RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
     po::options_description desc("Allowed options");
     desc.add_options()
         ("help", "Produce this help message")
-        ("nu", po::value<double>(), "Heat coefficient")
+        ("nu0", po::value<double>(), "Initial value for diffusion coefficient")
+        ("nufreq", po::value<double>(), "Frequency for diffusion coefficient")
         ("cx", po::value<double>(), "Advection velocity in x direction")
         ("cy", po::value<double>(), "Advection velocity in y direction")
         ("cz", po::value<double>(), "Advection velocity in z direction")
@@ -49,9 +50,14 @@ RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
         std::exit(0);
     }
 
-    if (vm.count("nu"))
+    if (vm.count("nu0"))
     {
-        this->set_nu(vm["nu"].as<double>());
+        this->set_nu0(vm["nu0"].as<double>());
+    }
+
+    if (vm.count("nufreq"))
+    {
+        this->set_nufreq(vm["nufreq"].as<double>());
     }
 
     if (vm.count("cx"))
@@ -114,6 +120,8 @@ RuntimeConfiguration::RuntimeConfiguration(int argc, char **argv)
             this->set_mode(ModeParallel);
         else if (opt == "serial")
             this->set_mode(ModeSerial);
+        else if (opt == "timing")
+            this->set_mode(ModeTiming);
         else
         {
             std::cerr << "Mode " << vm["mode"].as<std::string>() << " not recognized.\n"

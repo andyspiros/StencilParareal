@@ -46,10 +46,12 @@ class Parareal
 
 public:
     Parareal(PropagatorT& propagator, FieldType& initial, FieldType& solution,
+            double tStart,
              const RuntimeConfiguration& conf, MPI_Comm comm
             )
         : propagator_(propagator), kmax_(conf.kmax())
         , tsFine_(conf.timeStepsFinePerTimeSlice()), tsCoarse_(conf.timeStepsCoarsePerTimeSlice())
+        , tStart_(tStart)
         , dtFine_(conf.dtFine()), dtCoarse_(conf.dtCoarse())
         , comm_(comm)
         , async_(conf.async())
@@ -101,13 +103,15 @@ public:
                 )
             )
         );
+
+        tStartFine_ = tStart + dtFine_;
     }
 
     void DoParallel()
     {
         // Initialize
-        propagator_.DoEuler(qinitial_, qinitial_, dtCoarse_, tsCoarse_*commrank_);
-        propagator_.DoEuler(qinitial_, qcoarseold_, dtCoarse_, tsCoarse_);
+        propagator_.DoEuler(qinitial_, qinitial_, 0., dtCoarse_, tsCoarse_*commrank_);
+        propagator_.DoEuler(qinitial_, qcoarseold_, tStart_, dtCoarse_, tsCoarse_);
 
 
         for (int k = 0; k < kmax_; ++k)
@@ -115,13 +119,13 @@ public:
             // Fine propagation
             if (async_ && !isFirst_)
             {
-                propagator_.DoRK4(qinitial_, qfine_, dtFine_, 1);
+                propagator_.DoRK4(qinitial_, qfine_, tStart_, dtFine_, 1);
                 MPI_Irecv(pRecv_, dataSize_, MPI_DOUBLE, commrank_-1, k, comm_, &reqRecv_);
-                propagator_.DoRK4(qfine_, qfine_, dtFine_, tsFine_-1);
+                propagator_.DoRK4(qfine_, qfine_, tStartFine_, dtFine_, tsFine_-1);
             }
             else
             {
-                propagator_.DoRK4(qinitial_, qfine_, dtFine_, tsFine_);
+                propagator_.DoRK4(qinitial_, qfine_, tStart_, dtFine_, tsFine_);
             }
 
 
@@ -137,7 +141,7 @@ public:
 
 
             // Coarse propagation
-            propagator_.DoEuler(qinitial_, qcoarsenew_, dtCoarse_, tsCoarse_);
+            propagator_.DoEuler(qinitial_, qcoarsenew_, tStart_, dtCoarse_, tsCoarse_);
 
 
             // Update solution
@@ -167,15 +171,93 @@ public:
             MPI_Wait(&reqSend_, &status_);
     }
 
+    void DoTimedParallel(std::vector<double>& times)
+    {
+        times.resize(5*kmax_ + 2);
+
+        double e = MPI_Wtime();
+
+        // Initialize
+        propagator_.DoEuler(qinitial_, qinitial_, 0., dtCoarse_, tsCoarse_*commrank_);
+        propagator_.DoEuler(qinitial_, qcoarseold_, tStart_, dtCoarse_, tsCoarse_);
+
+        times[0] = MPI_Wtime() - e;
+
+        for (int k = 0; k < kmax_; ++k)
+        {
+            // Fine propagation
+            if (async_ && !isFirst_)
+            {
+                propagator_.DoRK4(qinitial_, qfine_, tStart_, dtFine_, 1);
+                MPI_Irecv(pRecv_, dataSize_, MPI_DOUBLE, commrank_-1, k, comm_, &reqRecv_);
+                propagator_.DoRK4(qfine_, qfine_, tStartFine_, dtFine_, tsFine_-1);
+            }
+            else
+            {
+                propagator_.DoRK4(qinitial_, qfine_, tStart_, dtFine_, tsFine_);
+            }
+
+            times[5*k + 1] = MPI_Wtime() - e;
+
+            // Receive data
+            if (async_ && !isFirst_)
+                MPI_Wait(&reqRecv_, &status_);
+            else if (!isFirst_)
+            {
+                SynchronizeCUDA();
+                MPI_Recv(pRecv_, dataSize_, MPI_DOUBLE, commrank_-1, k, comm_, &status_);
+                SynchronizeCUDA();
+            }
+
+            times[5*k + 2] = MPI_Wtime() - e;
+
+
+            // Coarse propagation
+            propagator_.DoEuler(qinitial_, qcoarsenew_, tStart_, dtCoarse_, tsCoarse_);
+            times[5*k + 3] = MPI_Wtime() - e;
+
+
+            // Update solution
+            if (async_ && !isLast_ && k > 0)
+                MPI_Wait(&reqSend_, &status_);
+            updateStencil_.Apply();
+
+            times[5*k + 4] = MPI_Wtime() - e;
+
+            // Send solution
+            if (async_ && !isLast_)
+            {
+                MPI_Isend(pSend_, dataSize_, MPI_DOUBLE, commrank_+1, k, comm_, &reqSend_);
+            }
+            else if(!isLast_)
+            {
+                SynchronizeCUDA();
+                MPI_Send(pSend_, dataSize_, MPI_DOUBLE, commrank_+1, k, comm_);
+                SynchronizeCUDA();
+            }
+            times[5*k + 5] = MPI_Wtime() - e;
+
+            qcoarseold_.SwapWith(qcoarsenew_);
+        }
+
+
+        // Wait for last send
+        if (async_ && !isLast_)
+            MPI_Wait(&reqSend_, &status_);
+
+        times[5*kmax_ + 1] = MPI_Wtime() - e;
+    }
+
     void DoSerial()
     {
-        propagator_.DoRK4(qinitial_, q_, dtFine_, tsFine_*commsize_);
+        propagator_.DoRK4(qinitial_, q_, tStart_, dtFine_, tsFine_*commsize_);
     }
 
 private:
     PropagatorT& propagator_;
     int kmax_;
     int tsFine_, tsCoarse_;
+    double tStart_, tStartFine_;
     double dtFine_, dtCoarse_;
     MPI_Comm comm_;
     int commsize_, commrank_;

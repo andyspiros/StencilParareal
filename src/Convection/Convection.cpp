@@ -129,8 +129,8 @@ namespace ConvectionStages
 }
 
 Convection::Convection(int isize, int jsize, int ksize, Real dx,
-                       Real nucoeff, Real cxcoeff, Real cycoeff, Real czcoeff)
-    : nu_(nucoeff), cx_(cxcoeff), cy_(cycoeff), cz_(czcoeff)
+                       Real nu0, Real nufreq, Real cxcoeff, Real cycoeff, Real czcoeff)
+    : nu0_(nu0), nufreq_(nufreq), cx_(cxcoeff), cy_(cycoeff), cz_(czcoeff)
     , dx_(dx), dx2_(dx*dx)
 {
     IJKSize domain;
@@ -285,37 +285,36 @@ void Convection::InitializeStencils(const IJKSize& domain)
     );
 }
 
-double Convection::DoRK4(ConvectionField& inputField, ConvectionField& outputField,
-                       double dt, int timesteps)
+void Convection::DoRK4(ConvectionField& inputField, ConvectionField& outputField,
+                       double tStart, double dt, int timesteps)
 {
     // First timestep, read from input, write into output
     if (timesteps > 0)
-        DoRK4Timestep(inputField, outputField, dt);
+        DoRK4Timestep(inputField, outputField, tStart, dt);
 
     // All other timesteps
+    int i = 0;
     for (--timesteps; timesteps > 0; --timesteps)
-        DoRK4Timestep(outputField, outputField, dt);
-
-    return 0.;
+        DoRK4Timestep(outputField, outputField, tStart+(++i)*dt, dt);
 }
 
-double Convection::DoEuler(ConvectionField& inputField, ConvectionField& outputField,
-                       double dt, int timesteps)
+void Convection::DoEuler(ConvectionField& inputField, ConvectionField& outputField,
+                       double tStart, double dt, int timesteps)
 {
     // First timestep, read from input, write into output
     if (timesteps > 0)
-        DoEulerTimestep(inputField, outputField, dt);
+        DoEulerTimestep(inputField, outputField, tStart, dt);
 
     // All other timesteps
+    int i = 0;
     for (--timesteps; timesteps > 0; --timesteps)
-        DoEulerTimestep(outputField, outputField, dt);
-
-    return 0.;
+        DoEulerTimestep(outputField, outputField, tStart+(++i)*dt, dt);
 }
 
-void Convection::DoRK4Timestep(ConvectionField& inputField, ConvectionField& outputField, double dt)
+void Convection::DoRK4Timestep(ConvectionField& inputField, ConvectionField& outputField, double t, double dt)
 {
     double dthalf = dt * .5;
+    nu_ = computenu(t);
     qEulerOut_.set_dataField(qInternal_);
     qMainIn_.set_dataField(inputField);
     qMainOut_.set_dataField(outputField);
@@ -365,8 +364,10 @@ void Convection::DoRK4Timestep(ConvectionField& inputField, ConvectionField& out
     rkStencil_->Apply();
 }
 
-void Convection::DoEulerTimestep(ConvectionField& inputField, ConvectionField& outputField, double dt)
+void Convection::DoEulerTimestep(ConvectionField& inputField, ConvectionField& outputField, double t, double dt)
 {
+    nu_ = computenu(t);
+
     // Compute RHS into k1
     qEulerOut_.set_dataField(outputField);
     qMainIn_.set_dataField(inputField);

@@ -18,7 +18,7 @@ typedef DataFieldOpenMP<Real, DataFieldStorageFormat<ConvectionIJBoundary, Stora
 class Convection
 {
 public:
-    Convection(int isize, int jsize, int ksize, Real dx, Real nu, Real cx, Real cy, Real cz);
+    Convection(int isize, int jsize, int ksize, Real dx, Real nu0, Real nufreq, Real cx, Real cy, Real cz);
     ~Convection();
 
     /**
@@ -37,8 +37,8 @@ public:
      * \return The actual end time ttend is returned.  This is the first number
      *         ttend = min(tstart + k * dt),  for integer k
      */
-    double DoRK4(ConvectionField& inputField, ConvectionField& outputField,
-                 double dt, int timesteps);
+    void DoRK4(ConvectionField& inputField, ConvectionField& outputField,
+                 double tStart, double dt, int timesteps);
 
     /**
      * Performs Euler timesteps
@@ -56,28 +56,34 @@ public:
      * \return The actual end time ttend is returned.  This is the first number
      *         ttend = min(tstart + k * dt),  for integer k
      */
-    double DoEuler(ConvectionField& inputField, ConvectionField& outputField,
-                   double dt, int timesteps);
+    void DoEuler(ConvectionField& inputField, ConvectionField& outputField,
+                   double tStart, double dt, int timesteps);
 
     /**
      * Performs a single RK4 timestep
      */
     void DoRK4Timestep(ConvectionField& inputField, ConvectionField& outputField,
-                       double dt);
+                       double t, double dt);
     /**
      * Performs a single Euler timestep
      */
     void DoEulerTimestep(ConvectionField& inputField, ConvectionField& outputField,
-                         double dt);
+                         double t, double dt);
 
 
 private:
     typedef JokerDataField<ConvectionField> JokerField; 
 
+    inline double computenu(double t) const
+    {
+        return nu0_ * (1. + .5 * std::sin(nufreq_ * t));
+    }
+
     void InitializeStencils(const IJKSize& domain);
 
     // Scalars
-    Real nu_, cx_, cy_, cz_, dx_, dx2_;
+    Real nu0_, nufreq_, nu_, cx_, cy_, cz_, dx_, dx2_;
+    Real nuparam_;
     Real dtparam_;
 
     // Internal data fields
