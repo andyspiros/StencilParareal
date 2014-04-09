@@ -40,16 +40,58 @@ for target = targets(:)'
     set(gca, 'YMinorGrid', 'off');
     set(gca, 'XTick', nodes);
     set(gca, 'XLim', [3/4*nodes(1) nodes(end)*4/3]);
+    set(gca, 'YLim', [.1 10]);
     title(sprintf('Parareal runtime on %cPU', target));
     legend show
     set(gcf, 'Units', 'centimeters');
     pos = get(gcf, 'Position');
-    pos(3:4) = [12 10];
+    pos(3:4) = [14 11];
     set(gcf, 'Position', pos);
     set(gcf,'PaperPositionMode','auto');
-    print(gcf, '-depsc2', sprintf('1%c.eps', target));
+    print(gcf, '-depsc2', sprintf('Runtime_%cPU.eps', target));
     
-    % Second plot: error
+    % Second plot: speedup
+    figure
+    hold on
+    serialRT = mean(d(:,6));
+    for i = 1:length(kmax)
+        k = kmax(i);
+        
+        % Plot speedup
+        plot(nodes, d(d(:,2) == k, 3), ...
+            'Color', kcolors(i, :), ...
+            'Marker', '^', ...
+            'DisplayName', sprintf('k = %d', k) ...
+          );
+      
+      % Plot maximal theoretical speedup
+      plot(nodes, d(d(:,2) == k, 4), ...
+          'Color', kcolors(i, :), ...
+          'LineStyle', '--', ...
+          'DisplayName', sprintf('Theor. k = %d', k) ...
+        );
+      
+    end
+    set(gca, 'XScale', 'log');
+    set(gca, 'YScale', 'log');
+    xlabel 'Nodes'
+    ylabel 'Speedup'
+    grid on
+    set(gca, 'XMinorGrid', 'off');
+    set(gca, 'YMinorGrid', 'off');
+    set(gca, 'XTick', nodes);
+    set(gca, 'XLim', [3/4*nodes(1) nodes(end)*4/3]);
+    title(sprintf('Speedup of Parareal on %cPU', target));
+    legend('show', 'Location', 'SE');
+    set(gcf, 'Units', 'centimeters');
+    pos = get(gcf, 'Position');
+    pos(3:4) = [14 11];
+    set(gcf, 'Position', pos);
+    set(gcf,'PaperPositionMode','auto');
+    print(gcf, '-depsc2', sprintf('Speedup_%cPU.eps', target));
+    
+    
+    % Third plot: error
     figure
     hold on
     for i = 1:length(kmax)
@@ -70,15 +112,15 @@ for target = targets(:)'
     set(gca, 'XTick', nodes);
     set(gca, 'XLim', [3/4*nodes(1) nodes(end)*4/3]);
     title(sprintf('Parareal error on %cPU', target));
-    legend show
+    legend('show', 'Location', 'SE');
     set(gcf, 'Units', 'centimeters');
     pos = get(gcf, 'Position');
-    pos(3:4) = [12 10];
+    pos(3:4) = [14 11];
     set(gcf, 'Position', pos);
     set(gcf,'PaperPositionMode','auto');
-    print(gcf, '-depsc2', sprintf('2%c.eps', target));
+    print(gcf, '-depsc2', sprintf('Error_%cPU.eps', target));
     
-    % Third plot: energy
+    % Fourth plot: energy
     figure
     hold on
     for i = 1:length(kmax)
@@ -102,10 +144,10 @@ for target = targets(:)'
     legend show
     set(gcf, 'Units', 'centimeters');
     pos = get(gcf, 'Position');
-    pos(3:4) = [12 10];
+    pos(3:4) = [14 11];
     set(gcf, 'Position', pos);
     set(gcf,'PaperPositionMode','auto');
-    print(gcf, '-depsc2', sprintf('3%c.eps', target));
+    print(gcf, '-depsc2', sprintf('Energy_%cPU.eps', target));
 end
 
 end
