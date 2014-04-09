@@ -104,7 +104,7 @@ public:
             )
         );
 
-        tStartFine_ = tStart + dtFine_;
+        tStartFine_ = tStart_ + dtFine_;
     }
 
     void DoParallel()
@@ -112,7 +112,6 @@ public:
         // Initialize
         propagator_.DoEuler(qinitial_, qinitial_, 0., dtCoarse_, tsCoarse_*commrank_);
         propagator_.DoEuler(qinitial_, qcoarseold_, tStart_, dtCoarse_, tsCoarse_);
-
 
         for (int k = 0; k < kmax_; ++k)
         {

@@ -132,6 +132,10 @@ Convection::Convection(int isize, int jsize, int ksize, Real dx,
                        Real nu0, Real nufreq, Real cxcoeff, Real cycoeff, Real czcoeff)
     : nu0_(nu0), nufreq_(nufreq), cx_(cxcoeff), cy_(cycoeff), cz_(czcoeff)
     , dx_(dx), dx2_(dx*dx)
+      
+#ifndef NDEBUG
+    , matfile("trallallero.mat")
+#endif
 {
     IJKSize domain;
     domain.Init(isize, jsize, ksize);
@@ -315,6 +319,7 @@ void Convection::DoRK4Timestep(ConvectionField& inputField, ConvectionField& out
 {
     double dthalf = dt * .5;
     nu_ = computenu(t);
+
     qEulerOut_.set_dataField(qInternal_);
     qMainIn_.set_dataField(inputField);
     qMainOut_.set_dataField(outputField);

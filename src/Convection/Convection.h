@@ -3,6 +3,10 @@
 
 #include "SharedInfrastructure.h"
 
+#ifndef NDEBUG
+#  include "MatFile.h"
+#endif
+
 class Stencil;
 
 // Define data field
@@ -97,6 +101,10 @@ private:
 
     // Stencils
     Stencil *rhs2Stencil_, *rhs4Stencil_, *eulerStencil_, *rkStencil_;
+
+#ifndef NDEBUG
+    MatFile matfile;
+#endif
 };
 
 #endif // CONVECTION_H

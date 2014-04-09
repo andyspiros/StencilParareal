@@ -1,3 +1,6 @@
+#ifndef MATFILE_H_
+#define MATFILE_H_
+
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -169,4 +172,6 @@ void MatFile::addField(const TDataField& field, int inc)
 {
     addField(field.name(), field, inc);
 }
+
+#endif // MATFILE_H_
 

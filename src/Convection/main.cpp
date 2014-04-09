@@ -218,6 +218,7 @@ int main(int argc, char **argv)
     HeatConfiguration conf = parseCommandLine(argc, argv);
 
     // Initialize GCL
+    MPI_Init(&argc, &argv);
     //GCL::GCL_Init();
     //typedef GCL::gcl_utils::boollist<3> CyclicType;
     //typedef GCL::MPI_3D_process_grid_t<CyclicType> GridType;
@@ -388,16 +389,20 @@ int main(int argc, char **argv)
             << totErrorInf/totExactInf << "\n";
     }
 
-    fillQ(exactfield, conf.nu0, conf.nufreq, conf.cx, conf.cy, conf.cz, conf.endtime, xstart, xend, ystart, yend, zstart, zend);
 
-    std::ostringstream fnameResult;
-    fnameResult << "result_" << myPI << "_" << myPJ << "_" << myPK << ".mat";
+    if (conf.mat)
+    {
+        fillQ(exactfield, conf.nu0, conf.nufreq, conf.cx, conf.cy, conf.cz, conf.endtime, xstart, xend, ystart, yend, zstart, zend);
 
-    MatFile matfile(fnameResult.str());
-    matfile.addField(qIn, -1);
-    matfile.addField(qOut, -1);
-    matfile.addField(errfield, -1);
-    matfile.addField(exactfield, -1);
+        std::ostringstream fnameResult;
+        fnameResult << "result_" << myPI << "_" << myPJ << "_" << myPK << ".mat";
+
+        MatFile matfile(fnameResult.str());
+        matfile.addField(qIn, -1);
+        matfile.addField(qOut, -1);
+        matfile.addField(errfield, -1);
+        matfile.addField(exactfield, -1);
+    }
 
     // Finalize GCL
     MPI_Finalize();

@@ -199,6 +199,10 @@ int main(int argc, char **argv)
                 << "Maximal speedup: " << maxSpeedup << "\n"
                 << "Error at end: " << e << "\n"
                 << std::endl;
+
+            MatFile matfile("trallallero.mat");
+            matfile.addField("q", q);
+            matfile.addField("qreference", qreference);
         }
     }
     else if (conf.mode() == ModeSerial)

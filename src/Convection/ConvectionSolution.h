@@ -9,8 +9,14 @@ inline double exactQ(double nu0, double nufreq, double cx, double cy, double cz,
                      double x, double y, double z, double t)
 {
     const double pi = 3.14159265358979;
-    const double a = nu0 * t - (nu0 / (2.*nufreq)) * (std::cos(nufreq*t)-1.);
-    return sin(2.*pi*(x-cx*t))*sin(2.*pi*(y-cy*t))*sin(2.*pi*(z-cz*t)) * exp(-12.*pi*pi*a);
+    const double a = nufreq > 0 ? nu0 * t - (nu0 / (2.*nufreq)) * (std::cos(nufreq*t)-1.) : nu0*t;
+    const double res = sin(2.*pi*(x-cx*t))*sin(2.*pi*(y-cy*t))*sin(2.*pi*(z-cz*t)) * exp(-12.*pi*pi*a);
+
+#ifndef NDEBUG
+    std::cout << "Exact at t = " << t << ", (" << x << ", " << y << ", " << z << ") = " << res << std::endl;
+#endif
+
+    return res;
 }
 
 
