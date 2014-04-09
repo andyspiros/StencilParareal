@@ -249,7 +249,7 @@ public:
 
     void DoSerial()
     {
-        propagator_.DoRK4(qinitial_, q_, tStart_, dtFine_, tsFine_*commsize_);
+        propagator_.DoRK4(qinitial_, q_, 0., dtFine_, tsFine_*commsize_);
     }
 
 private:
