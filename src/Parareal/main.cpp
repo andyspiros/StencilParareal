@@ -200,7 +200,7 @@ int main(int argc, char **argv)
                 << "Error at end: " << e << "\n"
                 << std::endl;
 
-            MatFile matfile("trallallero.mat");
+            MatFile matfile("result.mat");
             matfile.addField("q", q);
             matfile.addField("qreference", qreference);
         }

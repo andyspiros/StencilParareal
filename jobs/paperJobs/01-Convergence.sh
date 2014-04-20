@@ -1,5 +1,5 @@
 #! /bin/bash -l
-#SBATCH --account=h03
+#SBATCH --account=c01
 #SBATCH --ntasks-per-node=1
 
 # Compare convergence of Parareal against serial fine solution for
@@ -12,12 +12,12 @@
 
 usage()
 {
-    echo "Usage: 01-Convergence executable [target]"
+    echo "Usage: 01-Convergence executable target"
     echo "  target is either 'CPU' or 'GPU'"
 }
 
 # Retrieve executable
-if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+if [ $# -ne 2 ]; then
     usage
     exit 1
 fi
@@ -30,15 +30,13 @@ else
 fi
 
 target="GPU"
-if [ $# -gt 1 ]; then
-    if [ $2 == 'GPU' ]; then
-        target="GPU"
-    elif [ $2 == 'CPU' ]; then
-        target='CPU'
-    else
-        echo "Target $2 not recognized"
-        exit 3
-    fi
+if [ $2 == 'GPU' ]; then
+    target="GPU"
+elif [ $2 == 'CPU' ]; then
+    target='CPU'
+else
+    echo "Target $2 not recognized"
+    exit 3
 fi
 
 if [ $target == 'GPU' ]; then
@@ -55,19 +53,25 @@ endTime=0.1
 timeStepsCoarse=2048
 timeStepsFine=32768
 nu0=0.1
-nufreq=100
 
-args="--gridSize $gridSize --endTime $endTime --timeStepsCoarse $timeStepsCoarse --timeStepsFine $timeStepsFine --nu0 $nu0 --nufreq $nufreq $async"
+args="--gridSize $gridSize --endTime $endTime --timeStepsCoarse $timeStepsCoarse --timeStepsFine $timeStepsFine --nu0 $nu0 $async"
 
-resultfile="result_$nodes.dat"
-truncate -s 0 $resultfile
+resultfile_0="result_${nodes}_0.dat"
+resultfile_100="result_${nodes}_100.dat"
+truncate -s 0 $resultfile_100 $resultfile_0
 
 # Perform execution
 for k in $(seq 1 8); do
-    outfile="run_$nodes_$k.log"
-    aprun -n $nodes -N 1 $exe $args --kmax $k > $outfile
+    outfile0="run_${nodes}_${k}_0.log"
+    aprun -n $nodes -N 1 $exe $args --nufreq 0 --kmax $k > $outfile0
 
-    error=$(sed -rn 's/^Error at end ([0-9.]+)$/\1/p' < $outfile)
-    printf '%.7e  ' $error >> $resultfile
+    outfile100="run_${nodes}_${k}_100.log"
+    aprun -n $nodes -N 1 $exe $args --nufreq 100 --kmax $k > $outfile100
+
+    error=$(sed -rn 's/^Error at end: ([0-9\.]+)$/\1/p' < $outfile0)
+    printf '%.7e  ' $error >> $resultfile0
+
+    error=$(sed -rn 's/^Error at end: ([0-9\.]+)$/\1/p' < $outfile100)
+    printf '%.7e  ' $error >> $resultfile100
 done
 
