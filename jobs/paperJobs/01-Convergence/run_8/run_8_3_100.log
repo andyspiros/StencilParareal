@@ -1,0 +1,30 @@
+Initialization...
+
+Running with:
+ - initial diffusion coefficient: 0.1
+ - frequence of diffusion coefficient: 100
+ - advection velocity in x: 1
+ - advection velocity in y: 1
+ - advection velocity in z: 1
+ - spatial discretization step: 0.0078125
+ - endtime: 0.1
+ - number of time slices: 8
+ - time slice size: 0.0125
+ - CFL fine: 0.0075
+ - CFL coarse: 0.12
+ - timestep size fine: 3.05176e-06
+ - timestep size coarse: 4.88281e-05
+ - timesteps per slice fine propagator: 4096
+ - timesteps per slice coarse propagator: 256
+ - parareal iterations: 3
+ - asynchronous communications: Disabled
+ - intermediate fields in mat files: No
+
+
+Serial run time: 191.064
+Parallel run time: 74.7963
+Speedup: 2.55446
+Maximal speedup: 2.55857
+Error at end: 7.59444e-08
+
+Application 2397701 resources: utime ~2493s, stime ~410s, Rss ~132900, inblocks ~12600, outblocks ~77378
