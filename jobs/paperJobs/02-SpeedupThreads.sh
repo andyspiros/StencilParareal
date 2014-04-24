@@ -7,7 +7,7 @@ usage()
 }
 
 # Retrieve executable
-if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
     usage
     exit 1
 fi
@@ -19,7 +19,7 @@ if [ ! -x $exe ]; then
 fi
 
 # Get kmax
-if [ $# -lt 3 ]; then
+if [ $# -lt 2 ]; then
     kmax=6
 else
     kmax=$2
@@ -49,7 +49,7 @@ done
 for nodes in 8 32 128; do
     rundir="run_${nodes}"
     pushd $rundir > /dev/null
-    sbatch --time=30:00 --nodes=$nodes $jobscript $exe $target
+    sbatch --time=30:00 --nodes=$nodes $jobscript $exe $kmax
     popd > /dev/null
 done
 

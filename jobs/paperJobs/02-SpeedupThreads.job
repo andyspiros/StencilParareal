@@ -17,7 +17,7 @@ usage()
 }
 
 # Retrieve executable
-if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
     usage
     exit 1
 fi
@@ -30,7 +30,7 @@ else
 fi
 
 # Get kmax
-if [ $# -lt 3 ]; then
+if [ $# -lt 2 ]; then
     kmax=6
 else
     kmax=$2
