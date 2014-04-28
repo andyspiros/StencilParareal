@@ -49,7 +49,7 @@ done
 for nodes in 8 32 128; do
     rundir="run_${nodes}"
     pushd $rundir > /dev/null
-    sbatch --time=30:00 --nodes=$nodes $jobscript $exe $kmax
+    sbatch --time=6:00:00 --nodes=$nodes $jobscript $exe $kmax
     popd > /dev/null
 done
 

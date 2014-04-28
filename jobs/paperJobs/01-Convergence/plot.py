@@ -23,8 +23,12 @@ plt.plot(k, data[5,:], axes=ax, linestyle=':' , linewidth=2, marker='s', color='
 ax.set_yscale('log')
 plt.xlabel('Number of iterations k')
 plt.ylabel('Relative error')
-plt.title('Commparison of parareal VS serial solver')
-plt.legend(True)
+plt.grid(True)
+plt.title('Comparison of parareal VS serial solver')
+plt.legend()
 
-f.savefig('01-Comparison.eps')
-f.savefig('01-Comparison.png')
+f.savefig('01-Convergence.eps')
+f.savefig('01-Convergence.png')
+
+plt.show()
+

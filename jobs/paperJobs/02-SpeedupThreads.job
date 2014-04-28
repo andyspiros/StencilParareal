@@ -45,18 +45,18 @@ timeStepsCoarse=2048
 timeStepsFine=32768
 nu0=0.1
 
-args="--kmax ${kmax} --gridSize ${gridSize} --endTime ${endTime} --timeStepsCoarse ${timeStepsCoarse} --timeStepsFine ${timeStepsFine} --nu0 ${nu}0"
+args="--kmax ${kmax} --gridSize ${gridSize} --endTime ${endTime} --timeStepsCoarse ${timeStepsCoarse} --timeStepsFine ${timeStepsFine} --nu0 ${nu0} --noasync"
 
 # Perform execution
-outfile0="run_${nodes}_${k}_0.log"
-aprun -n $nodes -N 1 $exe $args --nufreq 0 --kmax $k > $outfile0
+for threads in 1 2 4 8 16; do
+    export OMP_NUM_THREADS=$threads
 
-outfile100="run_${nodes}_${k}_100.log"
-aprun -n $nodes -N 1 $exe $args --nufreq 100 --kmax $k > $outfile100
+    outfile0="run_${nodes}_${threads}_0.log"
+    echo "Running aprun -n $nodes -N 1 -d $threads $exe $args --nufreq"
+    aprun -n $nodes -N 1 -d $threads $exe $args --nufreq 0 > $outfile0
 
-error=$(sed -rn 's/^Error at end: (.+)\b$/\1/p' < $outfile0)
-printf '%.7e  ' $error >> $resultfile_0
-
-error=$(sed -rn 's/^Error at end: (.+)\b$/\1/p' < $outfile100)
-printf '%.7e  ' $error >> $resultfile_100
+    outfile100="run_${nodes}_${threads}_100.log"
+    echo "Running aprun -n $nodes -N 1 -d $threads $exe $args --nufreq 100"
+    aprun -n $nodes -N 1 -d $threads $exe $args --nufreq 100 > $outfile100
+done
 
