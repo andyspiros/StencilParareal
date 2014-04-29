@@ -15,6 +15,9 @@
 *.la
 *.a
 
+# STELLA
+STELLA/install
+
 # Slurm files
 slurm*.out
 
