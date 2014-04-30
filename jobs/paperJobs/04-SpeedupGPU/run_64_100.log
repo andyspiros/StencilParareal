@@ -22,9 +22,9 @@ Running with:
 
 
 Serial run time: 191.07
-Parallel run time: 20.6599
-Speedup: 9.24835
-Maximal speedup: 9.40245
+Parallel run time: 20.6535
+Speedup: 9.25124
+Maximal speedup: 9.40259
 Error at end: 6.2537e-14
 
-Application 2410696 resources: utime ~14011s, stime ~8051s, Rss ~132932, inblocks ~106346, outblocks ~160258
+Application 2415175 resources: utime ~15504s, stime ~14224s, Rss ~132932, inblocks ~106346, outblocks ~160258

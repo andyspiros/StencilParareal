@@ -8,23 +8,23 @@ Running with:
  - advection velocity in z: 1
  - spatial discretization step: 0.0078125
  - endtime: 0.1
- - number of time slices: 32
- - time slice size: 0.003125
+ - number of time slices: 4
+ - time slice size: 0.025
  - CFL fine: 0.0075
  - CFL coarse: 0.12
  - timestep size fine: 3.05176e-06
  - timestep size coarse: 4.88281e-05
- - timesteps per slice fine propagator: 1024
- - timesteps per slice coarse propagator: 64
+ - timesteps per slice fine propagator: 8192
+ - timesteps per slice coarse propagator: 512
  - parareal iterations: 6
  - asynchronous communications: Disabled
  - intermediate fields in mat files: No
 
 
-Serial run time: 191.071
-Parallel run time: 38.6524
-Speedup: 4.94331
-Maximal speedup: 4.97059
-Error at end: 4.33104e-14
+Serial run time: 191.06
+Parallel run time: 292.435
+Speedup: 0.653341
+Maximal speedup: 0.654104
+Error at end: 6.07155e-16
 
-Application 2415176 resources: utime ~8488s, stime ~7333s, Rss ~132940, inblocks ~52777, outblocks ~112898
+Application 2415180 resources: utime ~2302s, stime ~403s, Rss ~132820, inblocks ~5906, outblocks ~71458

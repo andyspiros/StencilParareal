@@ -10,8 +10,7 @@ fig = plt.figure()
 ax = fig.add_axes([.1, .08, .85, .85])
 
 plt.plot(nodes, data[:,1], axes=ax, linestyle='-', linewidth=1, marker='^', color='r', label='Speedup')
-plt.plot(nodes, data[:,3], axes=ax, linestyle='--', linewidth=1, color='r', label='Max speedup')
-#plt.plot(nodes, data[:,2], axes=ax, linestyle='-', linewidth=1, marker='^', color='b')
+plt.plot(nodes, data[:,2], axes=ax, linestyle='--', linewidth=1, color='r', label='Max speedup')
 
 xmin=nodes.min()*3./4.
 xmax=nodes.max()*4./3.
@@ -24,12 +23,12 @@ ax.set_xlim(xmin, xmax)
 ax.set_ylim(ymin, ymax)
 ax.set_xticks(nodes)
 ax.set_xticklabels(nodes)
-ax.set_yticks((1, 2, 4, 8, 16, 32))
-ax.set_yticklabels((1, 2, 4, 8, 16, 32))
+ax.set_yticks((.5, 1, 2, 4, 8, 16, 32))
+ax.set_yticklabels((.5, 1, 2, 4, 8, 16, 32))
 plt.xlabel('Number of nodes')
 plt.ylabel('Speedup')
 plt.grid(True)
-plt.title('Comparison of parareal VS serial solver')
+plt.title('Comparison of parareal VS serial solver on GPU')
 plt.legend()
 
 fig.savefig('04-SpeedupGPU.eps')
