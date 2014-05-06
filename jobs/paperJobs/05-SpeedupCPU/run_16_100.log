@@ -16,15 +16,15 @@ Running with:
  - timestep size coarse: 4.88281e-05
  - timesteps per slice fine propagator: 2048
  - timesteps per slice coarse propagator: 128
- - parareal iterations: 6
+ - parareal iterations: 3
  - asynchronous communications: Disabled
  - intermediate fields in mat files: No
 
 
-Serial run time: 912.878
-Parallel run time: 356.124
-Speedup: 2.56337
-Maximal speedup: 2.57269
-Error at end: 1.98337e-14
+Serial run time: 898.953
+Parallel run time: 181.148
+Speedup: 4.96254
+Maximal speedup: 5.02231
+Error at end: 1.23002e-07
 
-Application 2413530 resources: utime ~170010s, stime ~1744s, Rss ~204452, inblocks ~148448, outblocks ~459473
+Application 2417507 resources: utime ~149760s, stime ~1738s, Rss ~204452, inblocks ~148388, outblocks ~459473
