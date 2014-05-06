@@ -2,8 +2,7 @@
 
 usage()
 {
-    echo "Usage: 04-speedupGPU executable target [kmax]"
-    echo "  target is either CPU or GPU"
+    echo "Usage: 04-SpeedupGPU executable [kmax]"
     echo "  kmax is by default 6"
 }
 
@@ -14,27 +13,18 @@ if [ ! -x $exe ]; then
     exit 2
 fi
 
-# Get target
-if [ $2 == 'GPU' ]; then
-    time="30:00"
-elif [ $2 == 'CPU' ]; then
-    time="6:00:00"
-else
-    echo "Target $2 not recognized"
-    exit 3
-fi
-
 # Environment
 pushd `dirname $0` > /dev/null
 scriptpath=`pwd`
 popd > /dev/null
-jobscript="$scriptpath/04-Speedup.job"
+jobscript="$scriptpath/04-SpeedupGPU.job"
 
 echo "Using executable $exe"
 echo "Running job script $jobscript"
 
 # Start jobs
 for nodes in 4 8 16 32 64 128; do
-    sbatch --nodes $nodes --time $time $jobscript $exe $2 $3
+    echo sbatch --nodes $nodes --time 30:00 $jobscript $exe $2
+    sbatch --nodes $nodes --time 30:00 $jobscript $exe $2
 done
 
