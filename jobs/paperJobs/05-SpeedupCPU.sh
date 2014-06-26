@@ -24,6 +24,6 @@ echo "Running job script $jobscript"
 
 # Start jobs
 for nodes in 4 8 16 32 64 128; do
-    sbatch --nodes $nodes --time 6:00:00 $jobscript $exe $2 $3
+    sbatch --nodes $nodes --time 4:00:00 $jobscript $exe $2 $3
 done
 

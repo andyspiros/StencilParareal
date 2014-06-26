@@ -21,10 +21,10 @@ Running with:
  - intermediate fields in mat files: No
 
 
-Serial run time: 906.965
-Parallel run time: 95.073
-Speedup: 9.53967
-Maximal speedup: 9.54278
+Serial run time: 906.08
+Parallel run time: 94.8166
+Speedup: 9.55613
+Maximal speedup: 9.53538
 Error at end: 1.49606e-07
 
-Application 2417802 resources: utime ~254671s, stime ~362s, Rss ~204476, inblocks ~308624, outblocks ~853409
+Application 2424527 resources: utime ~253481s, stime ~428s, Rss ~204468, inblocks ~304532, outblocks ~853409

@@ -1,0 +1,72 @@
+#!/bin/bash -l
+#SBATCH --account=c01
+#SBATCH --ntasks-per-node=1
+
+# Run time-serial algorthim for reference
+
+# x: number of iterations k = 1, ..., 8
+# y: relative difference Parareal to fine serial solution in iteration k
+# lines  for nodes = 4, 8, 16, 32, 64, 128
+
+usage()
+{
+    echo "Usage: 03-Reference executable target"
+    echo "  target is either 'CPU' or 'GPU'"
+}
+
+# Retrieve executable
+if [ $# -ne 2 ]; then
+    usage
+    exit 1
+fi
+
+if [ -x $1 ]; then
+    exe=$1
+else
+    echo "Error: executable not found. Aborting"
+    exit 2
+fi
+
+target="GPU"
+if [ $2 == 'GPU' ]; then
+    target="GPU"
+elif [ $2 == 'CPU' ]; then
+    target='CPU'
+else
+    echo "Target $2 not recognized"
+    exit 3
+fi
+
+if [ $target == 'GPU' ]; then
+    export MPICH_RDMA_ENABLED_CUDA=1
+    async=--noasync
+else
+    export OMP_NUM_THREADS=8
+    async=--noasync
+fi
+
+nodes="${SLURM_JOB_NUM_NODES}"
+
+gridSize=128
+endTime=0.1
+timeStepsCoarse=2048
+timeStepsFine=32768
+nu0=0.1
+
+args="--gridSize $gridSize --endTime $endTime --timeStepsCoarse $timeStepsCoarse --timeStepsFine $timeStepsFine --nu0 $nu0 $async"
+
+# Perform execution
+outfile="run_${nodes}.log"
+aprun -n $nodes -N 1 $exe $args --nufreq 0 --mode=Serial > $outfile
+sleep 2
+
+# Get energy
+apid=$(sed -rn 's/^Application ([0-9]+).*/\1/p' < $outfile)
+parallelRT=$(sed -rn 's/Serial run time: (.*)/\1/p' < $outfile)
+energyParallel=$(sed -rn "s/.*apid: ${apid}.*\['energy_used', ([0-9]*)\]/\1/p" < "/scratch/daint/RUR/rur-$(date +%Y%m%d)")
+eParComp=$(bc -l <<< "$energyParallel / 0.95")
+eParComm=$(bc -l <<< "$nodes * 25 * $parallelRT")
+eParBlow=$(bc -l <<< "$nodes * 14.21 * $parallelRT")
+
+printf "%3d  %e  %e  %e\n" $nodes $eParComp $eParComm $eParBlow > "energy_${nodes}.dat"
+

@@ -55,9 +55,20 @@ nu0=0.1
 args="--gridSize $gridSize --endTime $endTime --timeStepsCoarse $timeStepsCoarse --timeStepsFine $timeStepsFine --kmax $kmax --nu0 $nu0 --noasync"
 
 # Perform execution
-outfile0="run_${nodes}_0.log"
-aprun -n $nodes -N 1 $darg $exe $args --nufreq 0 > $outfile0
+set -x
+outfile="run_${nodes}_0.log"
+aprun -n $nodes -N 1 $darg $exe $args --nufreq 0 > $outfile
 
-outfile100="run_${nodes}_100.log"
-aprun -n $nodes -N 1 $darg $exe $args --nufreq 100 > $outfile100
+# Get energy
+outfile="parallel_${nodes}_0.log"
+aprun -n $nodes -N 1 $exe $args --nufreq 0 --mode=Parallel > $outfile
+sleep 4
+apid=$(sed -rn 's/^Application ([0-9]+).*/\1/p' < $outfile)
+parallelRT=$(sed -rn 's/Parallel run time: (.*)/\1/p' < $outfile)
+energyParallel=$(sed -rn "s/.*apid: ${apid}.*\['energy_used', ([0-9]*)\]/\1/p" < "/scratch/daint/RUR/rur-$(date +%Y%m%d)")
+eParComp=$(bc -l <<< "$energyParallel / 0.95")
+eParComm=$(bc -l <<< "$nodes * 25 * $parallelRT")
+eParBlow=$(bc -l <<< "$nodes * 14.21 * $parallelRT")
+
+printf "%3d  %e  %e  %e\n" $nodes $eParComp $eParComm $eParBlow > "energy_${nodes}.dat"
 
