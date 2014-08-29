@@ -36,7 +36,7 @@ set (STELLA_PATH "" CACHE PATH
     )
 set ( STELLA_PATH "STELLA-NOTFOUND" CACHE STRING "STELLA install path" )
 if ( STELLA_PATH )
-    get_filename_component(STELLA_PATH_ABSOLUTE "${CMAKE_BINARY_DIR}/${STELLA_PATH}"
+    get_filename_component(STELLA_PATH_ABSOLUTE "${STELLA_PATH}"
         ABSOLUTE
     )
 endif ( STELLA_PATH )
@@ -56,6 +56,9 @@ find_library ( STELLA_SharedInfrastructure_LIBRARY
     NAMES "${STELLA_SharedInfrastructure_NAME}"
     PATHS "${STELLA_PATH_ABSOLUTE}/lib"
 )
+message(STATUS "STELLA_PATH_ABSOLUTE: ${STELLA_PATH_ABSOLUTE}")
+message(STATUS "STELLA_SharedInfrastructure_NAME: ${STELLA_SharedInfrastructure_NAME}")
+message(STATUS "STELLA_SharedInfrastructure_LIBRARY: ${STELLA_SharedInfrastructure_LIBRARY}")
 
 if ( STELLA_SharedInfrastructure_LIBRARY )
     add_library( SharedInfrastructure STATIC IMPORTED )
