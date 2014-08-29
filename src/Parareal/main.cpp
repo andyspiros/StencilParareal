@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <iomanip>
 #include "RuntimeConfiguration.h"
 #include "ConvectionSolution.h"
@@ -42,6 +43,42 @@ inline void SynchronizeCUDA()
 #endif
 }
 
+/**
+ * Read power management file and return contained value
+ */
+double read_pm_file(const std::string &fname) {
+    double result = 0.;
+    std::ifstream fid(fname.c_str());
+    fid >> result;
+    return result;
+}
+
+/**
+ * Get node energy
+ */
+double energy()
+{
+    return read_pm_file("/sys/cray/pm_counters/energy");
+}
+
+/**
+ * Get device energy
+ */
+double deviceEnergy()
+{
+    return read_pm_file("/sys/cray/pm_counters/accel_energy");
+}
+
+/**
+ * Get total energy
+ */
+double totalEnergy(double energyStart, double energyEnd, MPI_Comm comm)
+{
+    double myEnergy = energyEnd - energyStart;
+    double totEnergy;
+    MPI_Allreduce(&myEnergy, &totEnergy, 1, MPI_DOUBLE, MPI_SUM, comm);
+    return totEnergy;
+}
 
 /**
  * Gives the infinity norm of the error of the provided field
@@ -234,11 +271,21 @@ int main(int argc, char **argv)
         fillQ(qinitial, conf.nu0(), conf.nufreq(), conf.cx(), conf.cy(), conf.cz(), 0., 0., 1., 0., 1., 0., 1.);
         SynchronizeDevice(qinitial);
 
-        // Run serial
+        // Run parallel
         MPI_Barrier(MPI_COMM_WORLD);
         double e = MPI_Wtime();
+        double energyStart = energy();
+        double deviceEnergyStart = deviceEnergy();
+
         parareal.DoParallel();
+
+        MPI_Barrier(MPI_COMM_WORLD);
         e = MPI_Wtime() - e;
+        double energyEnd = energy();
+        double deviceEnergyEnd = deviceEnergy();
+
+        double totNode = totalEnergy(energyStart, energyEnd, MPI_COMM_WORLD);
+        double totDevice = totalEnergy(deviceEnergyStart, deviceEnergyEnd, MPI_COMM_WORLD);
 
         // Output
         MPI_Barrier(MPI_COMM_WORLD);
@@ -246,6 +293,8 @@ int main(int argc, char **argv)
         {
             std::cout << "\n"
                 << "Parallel run time: " << e << "\n"
+                << "Total node energy: " << totNode << "\n"
+                << "Total device energy: " << totDevice << "\n"
                 << std::endl;
         }
     }
