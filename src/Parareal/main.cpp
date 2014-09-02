@@ -10,6 +10,9 @@
 #include "MatFile.h"
 #include "Parareal.h"
 
+// Power constants (Watt)
+const double powerNetwork = 25.;
+const double powerBlower = 14.21;
 
 /**
  * Synchronzes the host storage of the field in the case of a GPU build
@@ -70,7 +73,15 @@ double deviceEnergy()
 }
 
 /**
- * Get total energy
+ * Get total energy, single-process case
+ */
+double totalEnergy(double energyStart, double energyEnd)
+{
+    return energyEnd - energyStart;
+}
+
+/**
+ * Get total energy, distributed case
  */
 double totalEnergy(double energyStart, double energyEnd, MPI_Comm comm)
 {
@@ -250,18 +261,33 @@ int main(int argc, char **argv)
         SynchronizeDevice(qinitial);
 
         // Run serial
-        MPI_Barrier(MPI_COMM_WORLD);
         double e = MPI_Wtime();
+        double energyStart = energy();
+        double deviceEnergyStart = deviceEnergy();
+
         parareal.DoSerial();
+
         e = MPI_Wtime() - e;
+        double energyEnd = energy();
+        double deviceEnergyEnd = deviceEnergy();
+
+        const double totDevice = totalEnergy(deviceEnergyStart, deviceEnergyEnd);
+        const double totNode = totalEnergy(energyStart, energyEnd) - totDevice;
+        const double totNetwork = e * powerNetwork;
+        const double totBlower = e * powerBlower;
+        const double totEnergy = totNode + totNetwork + totBlower;
 
         // Output
         MPI_Barrier(MPI_COMM_WORLD);
         if (isLast)
         {
-            std::cout << "\n"
-                << "Serial run time: " << e << "\n"
-                << std::endl;
+            std::cout << "\n" << "Serial run time: " << e << "\n";
+            std::printf("Node energy   : %8f J  (%8.3e W/node)\n", totNode   , totNode/e);
+            std::printf("Device energy : %8f J  (%8.3e W/node)\n", totDevice , totDevice/e);
+            std::printf("Network energy: %8f J  (%8.3e W/node)\n", totNetwork, totNetwork/e);
+            std::printf("Blower energy : %8f J  (%8.3e W/node)\n", totBlower , totBlower/e);
+            std::printf("Total energy  : %8f J  (%8.3e W/node)\n", totEnergy , totEnergy/e);
+            std::cout << std::endl;
         }
     }
     else if (conf.mode() == ModeParallel)
@@ -284,18 +310,23 @@ int main(int argc, char **argv)
         double energyEnd = energy();
         double deviceEnergyEnd = deviceEnergy();
 
-        double totNode = totalEnergy(energyStart, energyEnd, MPI_COMM_WORLD);
-        double totDevice = totalEnergy(deviceEnergyStart, deviceEnergyEnd, MPI_COMM_WORLD);
+        const double totDevice = totalEnergy(deviceEnergyStart, deviceEnergyEnd, MPI_COMM_WORLD);
+        const double totNode = totalEnergy(energyStart, energyEnd, MPI_COMM_WORLD) - totDevice;
+        const double totNetwork = e * powerNetwork * commsize;
+        const double totBlower = e * powerBlower * commsize;
+        const double totEnergy = totNode + totNetwork + totBlower;
 
         // Output
         MPI_Barrier(MPI_COMM_WORLD);
         if (isLast)
         {
-            std::cout << "\n"
-                << "Parallel run time: " << e << "\n"
-                << "Total node energy: " << totNode << "\n"
-                << "Total device energy: " << totDevice << "\n"
-                << std::endl;
+            std::cout << "\n" << "Parallel run time: " << e << "\n";
+            std::printf("Node energy   : %8f J  (%8.3e W/node)\n", totNode   , totNode/e/commsize);
+            std::printf("Device energy : %8f J  (%8.3e W/node)\n", totDevice , totDevice/e/commsize);
+            std::printf("Network energy: %8f J  (%8.3e W/node)\n", totNetwork, totNetwork/e/commsize);
+            std::printf("Blower energy : %8f J  (%8.3e W/node)\n", totBlower , totBlower/e/commsize);
+            std::printf("Total energy  : %8f J  (%8.3e W/node)\n", totEnergy , totEnergy/e/commsize);
+            std::cout << std::endl;
         }
     }
     else if (conf.mode() == ModeTiming)
