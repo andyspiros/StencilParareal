@@ -275,7 +275,7 @@ int main(int argc, char **argv)
         const double totNode = totalEnergy(energyStart, energyEnd) - totDevice;
         const double totNetwork = e * powerNetwork;
         const double totBlower = e * powerBlower;
-        const double totEnergy = totNode + totNetwork + totBlower;
+        const double totEnergy = totNode + totDevice + totNetwork + totBlower;
 
         // Output
         MPI_Barrier(MPI_COMM_WORLD);
@@ -297,6 +297,11 @@ int main(int argc, char **argv)
         fillQ(qinitial, conf.nu0(), conf.nufreq(), conf.cx(), conf.cy(), conf.cz(), 0., 0., 1., 0., 1., 0., 1.);
         SynchronizeDevice(qinitial);
 
+        // Run serial
+        parareal.DoSerial();
+        std::cout << " -- The serial computation is done\n";
+        ConvectionField qreference = q;
+
         // Run parallel
         MPI_Barrier(MPI_COMM_WORLD);
         double e = MPI_Wtime();
@@ -307,6 +312,8 @@ int main(int argc, char **argv)
 
         MPI_Barrier(MPI_COMM_WORLD);
         e = MPI_Wtime() - e;
+
+        std::cout << " -- The parallel computation is done\n";
         double energyEnd = energy();
         double deviceEnergyEnd = deviceEnergy();
 
@@ -314,18 +321,25 @@ int main(int argc, char **argv)
         const double totNode = totalEnergy(energyStart, energyEnd, MPI_COMM_WORLD) - totDevice;
         const double totNetwork = e * powerNetwork * commsize;
         const double totBlower = e * powerBlower * commsize;
-        const double totEnergy = totNode + totNetwork + totBlower;
+        const double totEnergy = totNode + totDevice + totNetwork + totBlower;
+
+        // Compute error
+        double error = computeErrorReference(q, qreference);
 
         // Output
         MPI_Barrier(MPI_COMM_WORLD);
         if (isLast)
         {
-            std::cout << "\n" << "Parallel run time: " << e << "\n";
-            std::printf("Node energy   : %8f J  (%8.3e W/node)\n", totNode   , totNode/e/commsize);
-            std::printf("Device energy : %8f J  (%8.3e W/node)\n", totDevice , totDevice/e/commsize);
-            std::printf("Network energy: %8f J  (%8.3e W/node)\n", totNetwork, totNetwork/e/commsize);
-            std::printf("Blower energy : %8f J  (%8.3e W/node)\n", totBlower , totBlower/e/commsize);
-            std::printf("Total energy  : %8f J  (%8.3e W/node)\n", totEnergy , totEnergy/e/commsize);
+            const double fac = 1./e/commsize;
+
+            std::cout << std::endl;
+            std::printf("Parallel run time: %f s\n", e);
+            std::printf("Node energy   : %8f J  (%8.3e W/node)\n", totNode   , fac*totNode);
+            std::printf("Device energy : %8f J  (%8.3e W/node)\n", totDevice , fac*totDevice);
+            std::printf("Network energy: %8f J  (%8.3e W/node)\n", totNetwork, fac*totNetwork);
+            std::printf("Blower energy : %8f J  (%8.3e W/node)\n", totBlower , fac*totBlower);
+            std::printf("Total energy  : %8f J  (%8.3e W/node)\n", totEnergy , fac*totEnergy);
+            std::printf("Error of parareal: %.4e\n", error);
             std::cout << std::endl;
         }
     }
