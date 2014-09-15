@@ -1,0 +1,75 @@
+#!/bin/bash -l
+#SBATCH --account=c01
+#SBATCH --ntasks-per-node=1
+
+usage()
+{
+    echo "Usage: 009-NewEnergyCPU executable [threads [kmax]]"
+    echo "  threads is by default 8"
+    echo "  kmax is by default 6"
+}
+
+# Retrieve executable
+if [ $# -lt 1 ] || [ $# -gt 3 ]; then
+    usage
+    exit 1
+fi
+
+if [ -x $1 ]; then
+    exe=$1
+else
+    echo "Error: executable not found. Aborting"
+    exit 2
+fi
+
+# Get number of threads
+if [ $# -lt 2 ]; then
+    threads=8
+else
+    threads=$2
+fi
+
+test $threads -ge 1 2> /dev/null
+if [ $? -gt 0 ]; then
+    echo "Thread number invalid"
+fi
+
+export OMP_NUM_THREADS=$threads
+darg="-d $threads"
+
+# Get kmax
+if [ $# -lt 3 ]; then
+    kmax=6
+else
+    kmax=$3
+fi
+
+nodes="${SLURM_JOB_NUM_NODES}"
+
+gridSize=128
+endTime=0.1
+timeStepsCoarse=2048
+timeStepsFine=32768
+nu0=0.1
+
+args="--gridSize $gridSize --endTime $endTime --timeStepsCoarse $timeStepsCoarse --timeStepsFine $timeStepsFine --kmax $kmax --nu0 $nu0 --noasync"
+
+set -x
+
+if [[ $nodes == 1 ]]; then
+    # Run serial
+    outfile="serial_0.log"
+    aprun -n $nodes -N 1 $darg $exe $args --nufreq 0 --mode=Serial > $outfile
+else
+    # Run parallel
+    outfile="parallel_${nodes}_0.log"
+    aprun -n $nodes -N 1 $darg $exe $args --nufreq 0 --mode=Parallel > $outfile
+fi
+
+#eNode=$(   sed -rn    's/Node energy *: ([^ ]+) .*/\1/p' < $outfile)
+#eDevice=$( sed -rn  's/Device energy *: ([^ ]+) .*/\1/p' < $outfile)
+#eNetwork=$(sed -rn 's/Network energy *: ([^ ]+) .*/\1/p' < $outfile)
+#eBlower=$( sed -rn  's/Blower energy *: ([^ ]+) .*/\1/p' < $outfile)
+#
+#printf "%3d  %e  %e  %e %e\n" $nodes $eNode $eDevice $eNetwork $eBlower > "energy_${nodes}.dat"
+

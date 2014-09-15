@@ -1,0 +1,61 @@
+#!/bin/bash -l
+#SBATCH --account=c01
+#SBATCH --ntasks-per-node=1
+
+usage()
+{
+    echo "Usage: 09-NewEnergyGPU executable [kmax]"
+    echo "  kmax is by default 6"
+}
+
+export MPICH_RDMA_ENABLED_CUDA=1
+
+# Retrieve executable
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    usage
+    exit 1
+fi
+
+if [ -x $1 ]; then
+    exe=$1
+else
+    echo "Error: executable not found. Aborting"
+    exit 2
+fi
+
+# Get kmax
+if [ $# -lt 2 ]; then
+    kmax=6
+else
+    kmax=$2
+fi
+
+nodes="${SLURM_JOB_NUM_NODES}"
+
+gridSize=128
+endTime=0.1
+timeStepsCoarse=2048
+timeStepsFine=32768
+nu0=0.1
+
+args="--gridSize $gridSize --endTime $endTime --timeStepsCoarse $timeStepsCoarse --timeStepsFine $timeStepsFine --kmax $kmax --nu0 $nu0 --noasync"
+
+set -x
+
+if [[ $nodes == 1 ]]; then
+    # Get energy serial
+    outfile="serial_0.log"
+    aprun -n $nodes -N 1 $exe $args --nufreq 0 --mode=Serial > $outfile
+else
+    # Get energy parallel
+    outfile="parallel_${nodes}_0.log"
+    aprun -n $nodes -N 1 $exe $args --nufreq 0 --mode=Parallel > $outfile
+fi
+
+#eNode=$(   sed -rn    's/Node energy *: ([^ ]+) .*/\1/p' < $outfile)
+#eDevice=$( sed -rn  's/Device energy *: ([^ ]+) .*/\1/p' < $outfile)
+#eNetwork=$(sed -rn 's/Network energy *: ([^ ]+) .*/\1/p' < $outfile)
+#eBlower=$( sed -rn  's/Blower energy *: ([^ ]+) .*/\1/p' < $outfile)
+#
+#printf "%3d  %e  %e  %e %e\n" $nodes $eNode $eDevice $eNetwork $eBlower > "energy_${nodes}.dat"
+

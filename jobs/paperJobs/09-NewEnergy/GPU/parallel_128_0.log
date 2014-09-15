@@ -1,0 +1,31 @@
+Initialization...
+
+Running with:
+ - initial diffusion coefficient: 0.1
+ - frequence of diffusion coefficient: 0
+ - advection velocity in x: 1
+ - advection velocity in y: 1
+ - advection velocity in z: 1
+ - spatial discretization step: 0.0078125
+ - endtime: 0.1
+ - number of time slices: 128
+ - time slice size: 0.00078125
+ - CFL fine: 0.0075
+ - CFL coarse: 0.12
+ - timestep size fine: 3.05176e-06
+ - timestep size coarse: 4.88281e-05
+ - timesteps per slice fine propagator: 256
+ - timesteps per slice coarse propagator: 16
+ - parareal iterations: 3
+ - asynchronous communications: Disabled
+ - intermediate fields in mat files: No
+
+Parallel run time: 7.345789 s
+Node energy   : 64604.000000 J  (6.871e+01 W/node)
+Device energy : 115989.000000 J  (1.234e+02 W/node)
+Network energy: 23506.524658 J  (2.500e+01 W/node)
+Blower energy : 13361.108616 J  (1.421e+01 W/node)
+Total energy  : 217460.633274 J  (2.313e+02 W/node)
+Error of parareal: 1.7314e-07
+
+Application 2735207 resources: utime ~21779s, stime ~3711s, Rss ~132932, inblocks ~223978, outblocks ~233602
